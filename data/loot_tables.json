@@ -1,0 +1,24 @@
+{
+  "enemy_scout": {
+    "drop_chance": 0.7,
+    "rolls": 1,
+    "items": [
+      {"item_id": "med_kit_small", "weight": 40},
+      {"item_id": "ammo_pack_light", "weight": 35},
+      {"item_id": "scope_basic", "weight": 15},
+      {"item_id": "barrel_mod_light", "weight": 10}
+    ]
+  },
+  "enemy_enforcer": {
+    "drop_chance": 0.9,
+    "rolls": 2,
+    "items": [
+      {"item_id": "med_kit_large", "weight": 25},
+      {"item_id": "ammo_pack_heavy", "weight": 25},
+      {"item_id": "armor_plate", "weight": 20},
+      {"item_id": "plasma_barrel", "weight": 15},
+      {"item_id": "rare_mod", "weight": 10},
+      {"item_id": "weapon_drop_rare", "weight": 5}
+    ]
+  }
+}
