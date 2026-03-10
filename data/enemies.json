@@ -1,0 +1,30 @@
+{
+  "tiers": {
+    "scout": {
+      "health": 50,
+      "speed": 120.0,
+      "damage": 8,
+      "detection_range": 250.0,
+      "attack_range": 200.0,
+      "fire_rate": 1.5,
+      "alert_delay": 0.5,
+      "idle_duration": 2.0,
+      "loot_table_id": "enemy_scout",
+      "xp_reward": 25,
+      "sprite_key": "enemy_scout"
+    },
+    "enforcer": {
+      "health": 150,
+      "speed": 70.0,
+      "damage": 20,
+      "detection_range": 300.0,
+      "attack_range": 180.0,
+      "fire_rate": 0.8,
+      "alert_delay": 0.8,
+      "idle_duration": 3.0,
+      "loot_table_id": "enemy_enforcer",
+      "xp_reward": 75,
+      "sprite_key": "enemy_enforcer"
+    }
+  }
+}
