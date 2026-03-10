@@ -1,0 +1,21 @@
+{
+  "screen_width": 1280,
+  "screen_height": 720,
+  "fullscreen": false,
+  "music_volume": 0.7,
+  "sfx_volume": 0.7,
+  "keybindings": {
+    "move_up": "w",
+    "move_down": "s",
+    "move_left": "a",
+    "move_right": "d",
+    "sprint": "lshift",
+    "crouch": "lctrl",
+    "slide": "c",
+    "jump": "space",
+    "interact": "e",
+    "reload": "r",
+    "inventory": "tab",
+    "pause": "escape"
+  }
+}
