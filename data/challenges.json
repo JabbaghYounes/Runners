@@ -1,0 +1,112 @@
+{
+  "challenges": [
+    {
+      "id": "kill_spree_5",
+      "description": "Eliminate 5 enemies in a single round",
+      "criteria_type": "enemy_killed",
+      "target": 5,
+      "zone_filter": null,
+      "reward_xp": 150,
+      "reward_money": 200
+    },
+    {
+      "id": "kill_spree_10",
+      "description": "Eliminate 10 enemies in a single round",
+      "criteria_type": "enemy_killed",
+      "target": 10,
+      "zone_filter": null,
+      "reward_xp": 300,
+      "reward_money": 400
+    },
+    {
+      "id": "loot_collector_5",
+      "description": "Pick up 5 loot items in a single round",
+      "criteria_type": "item_picked_up",
+      "target": 5,
+      "zone_filter": null,
+      "reward_xp": 100,
+      "reward_money": 150
+    },
+    {
+      "id": "loot_collector_10",
+      "description": "Pick up 10 loot items in a single round",
+      "criteria_type": "item_picked_up",
+      "target": 10,
+      "zone_filter": null,
+      "reward_xp": 200,
+      "reward_money": 300
+    },
+    {
+      "id": "zone_alpha_hunter",
+      "description": "Eliminate 3 enemies in Zone Alpha",
+      "criteria_type": "enemy_killed",
+      "target": 3,
+      "zone_filter": "zone_alpha",
+      "reward_xp": 120,
+      "reward_money": 175
+    },
+    {
+      "id": "zone_beta_hunter",
+      "description": "Eliminate 3 enemies in Zone Beta",
+      "criteria_type": "enemy_killed",
+      "target": 3,
+      "zone_filter": "zone_beta",
+      "reward_xp": 120,
+      "reward_money": 175
+    },
+    {
+      "id": "zone_gamma_hunter",
+      "description": "Eliminate 5 enemies in Zone Gamma",
+      "criteria_type": "enemy_killed",
+      "target": 5,
+      "zone_filter": "zone_gamma",
+      "reward_xp": 200,
+      "reward_money": 300
+    },
+    {
+      "id": "explorer",
+      "description": "Enter 3 different zones in a single round",
+      "criteria_type": "zone_entered",
+      "target": 3,
+      "zone_filter": null,
+      "reward_xp": 100,
+      "reward_money": 150
+    },
+    {
+      "id": "deep_explorer",
+      "description": "Enter all zones in a single round",
+      "criteria_type": "zone_entered",
+      "target": 4,
+      "zone_filter": null,
+      "reward_xp": 200,
+      "reward_money": 350
+    },
+    {
+      "id": "big_haul",
+      "description": "Extract with at least 8 loot items",
+      "criteria_type": "extracted_with_items",
+      "target": 8,
+      "zone_filter": null,
+      "reward_xp": 250,
+      "reward_money": 500
+    },
+    {
+      "id": "quick_draw",
+      "description": "Get the first kill within 3 minutes of round start",
+      "criteria_type": "first_kill_time",
+      "target": 180,
+      "zone_filter": null,
+      "reward_xp": 150,
+      "reward_money": 250
+    },
+    {
+      "id": "survivalist",
+      "description": "Complete an extraction with full health",
+      "criteria_type": "extraction_full_health",
+      "target": 1,
+      "zone_filter": null,
+      "reward_xp": 200,
+      "reward_money": 400
+    }
+  ]
+}
