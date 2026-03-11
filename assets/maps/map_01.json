@@ -1,0 +1,58 @@
+{
+  "_comment": "map_01 — primary extraction map. Three zones span 1280 x 720 px.",
+
+  "meta": {
+    "name": "map_01",
+    "tile_size": 32,
+    "width_tiles": 40,
+    "height_tiles": 23
+  },
+
+  "zones": [
+    {
+      "name": "zone_alpha",
+      "rect": [0, 0, 427, 720],
+      "music_track": "assets/audio/music/zone_alpha.ogg",
+      "spawn_points": [
+        [64,  360],
+        [128, 360],
+        [192, 360]
+      ],
+      "enemy_spawns": [
+        {"type": "grunt",  "pos": [80,  200]},
+        {"type": "grunt",  "pos": [200, 400]},
+        {"type": "heavy",  "pos": [350, 300]}
+      ]
+    },
+    {
+      "name": "zone_beta",
+      "rect": [427, 0, 426, 720],
+      "music_track": "assets/audio/music/zone_beta.ogg",
+      "spawn_points": [
+        [500, 200],
+        [640, 360],
+        [780, 500]
+      ],
+      "enemy_spawns": [
+        {"type": "grunt",  "pos": [500, 150]},
+        {"type": "sniper", "pos": [700, 600]},
+        {"type": "grunt",  "pos": [820, 300]}
+      ]
+    },
+    {
+      "name": "zone_gamma",
+      "rect": [853, 0, 427, 720],
+      "music_track": "assets/audio/music/zone_gamma.ogg",
+      "spawn_points": [
+        [900, 200],
+        [1050, 360],
+        [1150, 500]
+      ],
+      "enemy_spawns": [
+        {"type": "heavy",  "pos": [900,  180]},
+        {"type": "grunt",  "pos": [1000, 400]},
+        {"type": "sniper", "pos": [1200, 250]}
+      ]
+    }
+  ]
+}
