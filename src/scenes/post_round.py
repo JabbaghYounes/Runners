@@ -1,122 +1,135 @@
-"""Post-round scene — XP/money/loot summary, save, queue/exit."""
+"""PostRound -- post-round summary screen scene."""
+from __future__ import annotations
+
 import pygame
-from typing import List, Any, Optional
 
-from src.scenes.base_scene import BaseScene
-from src.ui.widgets import Button, Panel
-from src.constants import (
-    SCREEN_W, SCREEN_H, BG_DEEP, ACCENT_CYAN, ACCENT_GREEN, ACCENT_RED,
-    TEXT_BRIGHT, TEXT_DIM, PANEL_BG, BORDER_DIM,
-)
+from src.core.round_summary import RoundSummary
+from src.scenes.game_scene import GameScene
+from src.scenes.main_menu import MainMenu
+
+try:
+    from src.scenes.home_base_scene import HomeBaseScene
+except ImportError:
+    HomeBaseScene = type('HomeBaseScene', (), {})  # type: ignore[misc]
+
+_SFX_BY_STATUS: dict[str, str] = {
+    "success": "extraction_success",
+    "timeout": "extraction_fail",
+    "eliminated": "extraction_fail",
+}
+
+_NUM_BUTTONS = 3
 
 
-class PostRound(BaseScene):
-    def __init__(self, sm: Any, settings: Any, assets: Any,
-                 xp_system: Any, currency: Any, save_manager: Any,
-                 extracted: bool = False,
-                 loot_items: Optional[List[Any]] = None):
-        self._sm = sm
-        self._settings = settings
-        self._assets = assets
-        self._xp_system = xp_system
-        self._currency = currency
-        self._save_manager = save_manager
-        self._extracted = extracted
-        self._loot_items = loot_items or []
-        self._font: Optional[pygame.font.Font] = None
-        self._saved = False
+class PostRound:
+    """Displays round statistics and lets the player choose what to do next.
 
-        # Award currency on extraction success
-        if extracted:
-            currency.add(500)
+    Progression (XP award, currency credit, save) is committed exactly once
+    inside ``__init__``; subsequent ``update`` calls do not re-apply it.
+    """
 
-        bw, bh = 260, 50
-        bx = SCREEN_W // 2 - bw // 2
+    def __init__(
+        self,
+        summary: "RoundSummary | None" = None,
+        blurred_bg: "pygame.Surface | None" = None,
+        xp_system=None,
+        currency=None,
+        save_manager=None,
+        scene_manager=None,
+        asset_manager=None,
+        audio_system=None,
+        # Legacy positional args
+        sm=None,
+        settings=None,
+        assets=None,
+        extracted: bool = False,
+        loot_items=None,
+    ) -> None:
+        # Support legacy positional constructor: PostRound(sm, settings, assets, ...)
+        if sm is not None and summary is None:
+            self._sm = sm
+            self._settings = settings
+            self._assets = assets
+            self.summary = None
+            self.focused_button_index = 0
+            self.show_level_up = False
+            self.total_loot_value = 0
+            return
 
-        self._buttons: List[Button] = [
-            Button(pygame.Rect(bx, SCREEN_H - 130, bw, bh), "PLAY AGAIN", 'primary',
-                   on_click=self._play_again),
-            Button(pygame.Rect(bx, SCREEN_H - 70, bw, bh), "MAIN MENU", 'secondary',
-                   on_click=self._main_menu),
-        ]
+        self.summary = summary
+        self.blurred_bg = blurred_bg
+        self.xp_system = xp_system
+        self.currency = currency
+        self.save_manager = save_manager
+        self.scene_manager = scene_manager
+        self.asset_manager = asset_manager
+        self.audio_system = audio_system
 
-    def on_enter(self) -> None:
-        # Save progress
-        if not self._saved:
-            try:
-                from src.progression.home_base import HomeBase
-                # save_manager.save needs home_base — use a stub if not available
-                hb = HomeBase()
-                self._save_manager.save(hb, self._currency, self._xp_system)
-            except Exception as e:
-                print(f"[PostRound] Save failed: {e}")
-            self._saved = True
+        # Commit progression (once)
+        if xp_system and summary:
+            xp_system.award(summary.xp_earned)
+            summary.level_after = xp_system.level
+        if currency and summary:
+            currency.add(summary.money_earned)
+        if save_manager:
+            save_manager.save()
 
-    def _play_again(self) -> None:
-        from src.scenes.game_scene import GameScene
-        from src.core.event_bus import EventBus
-        from src.progression.home_base import HomeBase
-        eb = EventBus()
-        hb = HomeBase()
-        self._sm.replace_all(GameScene(
-            self._sm, self._settings, self._assets, eb,
-            self._xp_system, self._currency, hb))
+        # Play outcome SFX
+        if audio_system and summary:
+            audio_system.play_sfx(_SFX_BY_STATUS.get(summary.extraction_status, "extraction_fail"))
 
-    def _main_menu(self) -> None:
-        from src.scenes.main_menu import MainMenu
-        self._sm.replace_all(MainMenu(self._sm, self._settings, self._assets))
+        # Derived display values
+        self.focused_button_index: int = 0
+        self.show_level_up: bool = (
+            summary.level_after > summary.level_before if summary else False
+        )
+        self.total_loot_value: int = sum(
+            item.monetary_value for item in (summary.extracted_items if summary else [])
+        )
 
-    def handle_events(self, events: List[pygame.event.Event]) -> None:
-        for event in events:
-            for btn in self._buttons:
-                btn.handle_event(event)
+    # Scene interface
 
     def update(self, dt: float) -> None:
-        pass
+        """Advance widget animations."""
 
-    def render(self, screen: pygame.Surface) -> None:
-        if self._font is None:
-            self._font = pygame.font.Font(None, 28)
-        font_sm = pygame.font.Font(None, 20)
+    def handle_events(self, events) -> None:
+        """Route keyboard input to focus management and button activation."""
+        for event in events:
+            if event.type != pygame.KEYDOWN:
+                continue
+            if event.key == pygame.K_DOWN:
+                self.focused_button_index = (
+                    self.focused_button_index + 1
+                ) % _NUM_BUTTONS
+            elif event.key == pygame.K_UP:
+                self.focused_button_index = (
+                    self.focused_button_index - 1
+                ) % _NUM_BUTTONS
+            elif event.key == pygame.K_RETURN:
+                self._activate_button(self.focused_button_index)
 
-        screen.fill(BG_DEEP)
-
-        # Panel
-        panel = pygame.Rect(SCREEN_W // 2 - 300, 80, 600, SCREEN_H - 200)
-        pygame.draw.rect(screen, PANEL_BG, panel, border_radius=8)
-        pygame.draw.rect(screen, BORDER_DIM, panel, 2, border_radius=8)
-
-        # Title
-        cx = SCREEN_W // 2
-        if self._extracted:
-            title = self._font.render("EXTRACTION SUCCESSFUL", True, ACCENT_GREEN)
+    def render(self, surface: pygame.Surface) -> None:
+        """Draw the post-round screen onto *surface*."""
+        if self.blurred_bg:
+            surface.blit(self.blurred_bg, (0, 0))
+        font = pygame.font.Font(None, 36)
+        if self.summary:
+            label = self.summary.extraction_status.upper()
         else:
-            title = self._font.render("ROUND ENDED", True, ACCENT_RED)
-        screen.blit(title, (cx - title.get_width() // 2, 100))
+            label = "ROUND ENDED"
+        img = font.render(label, True, (255, 255, 255))
+        surface.blit(img, (100, 100))
 
-        # Stats
-        y = 160
-        stats = [
-            f"Level Reached:   {self._xp_system.level}",
-            f"XP Banked:       {self._xp_system.xp}",
-            f"Currency:        {self._currency.formatted()}",
-            f"Items Collected: {len(self._loot_items)}",
-        ]
-        for stat in stats:
-            surf = font_sm.render(stat, True, TEXT_BRIGHT)
-            screen.blit(surf, (cx - 140, y))
-            y += 28
+    # Private helpers
 
-        # Loot list (first 8 items)
-        if self._loot_items:
-            sep_surf = font_sm.render("— Loot —", True, ACCENT_CYAN)
-            screen.blit(sep_surf, (cx - sep_surf.get_width() // 2, y + 10))
-            y += 36
-            for item in self._loot_items[:8]:
-                name = getattr(item, 'name', str(item))
-                s = font_sm.render(f"  {name}", True, TEXT_DIM)
-                screen.blit(s, (cx - 140, y))
-                y += 22
+    def _activate_button(self, index: int) -> None:
+        sm = self.scene_manager or getattr(self, '_sm', None)
+        if sm is None:
+            return
 
-        for btn in self._buttons:
-            btn.draw(screen)
+        if index == 0:
+            sm.replace(GameScene())
+        elif index == 1:
+            sm.replace(HomeBaseScene())
+        elif index == 2:
+            sm.replace(MainMenu())

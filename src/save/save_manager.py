@@ -1,47 +1,163 @@
+"""SaveManager -- read/write the player's persistent save file.
+
+Design notes:
+- Only ``PostRound`` and ``HomeBaseScene`` (on exit) call ``save()``.
+  All other runtime code works against already-loaded state objects.
+- Writes are atomic: data is flushed to a ``.tmp`` file then renamed into
+  place so a crash mid-write never corrupts the existing save.
+- A missing or corrupt save file silently falls back to a fresh new-game
+  state -- the player simply starts from zero.
+- The ``version`` field allows future migrations without breaking old saves.
+"""
+from __future__ import annotations
+
 import json
 import os
-from typing import Any, Dict, Optional
+from pathlib import Path
+from typing import Any
+
+SAVE_VERSION: int = 1
+_DEFAULT_SAVE_PATH = Path("saves/save.json")
+
 
 class SaveManager:
-    def __init__(self, save_path: str = 'saves/save.json'):
-        self.save_path = save_path
+    """Handles JSON persistence for player progression."""
 
-    def load(self) -> Dict[str, Any]:
-        if os.path.exists(self.save_path):
-            try:
-                with open(self.save_path, 'r') as f:
-                    data = json.load(f)
-                return self._migrate(data)
-            except Exception as e:
-                print(f"[SaveManager] Load failed: {e}")
-        return self._new_game()
+    def __init__(self, save_path: Path | str = _DEFAULT_SAVE_PATH) -> None:
+        self._save_path = Path(save_path)
 
-    def save(self, home_base: Any, currency: Any, xp_system: Any,
-             inventory: Optional[Any] = None) -> None:
-        os.makedirs(os.path.dirname(self.save_path) or '.', exist_ok=True)
-        tmp_path = self.save_path + '.tmp'
-        data = {
-            'schema_version': 1,
-            'home_base': home_base.to_save_dict(),
-            'currency': currency.to_save_dict(),
-            'xp': xp_system.to_save_dict(),
-        }
+    def load(self) -> dict:
+        """Load the save file and return the state dictionary.
+
+        On ``FileNotFoundError`` or any JSON parse error the method
+        returns a fresh new-game state without raising.
+
+        Returns:
+            A fully populated state dict (see :meth:`_new_game` for schema).
+        """
         try:
-            with open(tmp_path, 'w') as f:
-                json.dump(data, f, indent=2)
-            os.replace(tmp_path, self.save_path)
-        except Exception as e:
-            print(f"[SaveManager] Save failed: {e}")
+            with open(self._save_path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            return self._migrate(data)
+        except (FileNotFoundError, json.JSONDecodeError, KeyError, TypeError):
+            return self._new_game()
 
-    def _new_game(self) -> Dict[str, Any]:
+    def save(self, state: dict | Any = None, **kwargs: Any) -> None:
+        """Persist the current progression state to disk atomically.
+
+        Supports two calling conventions:
+        1. save(state_dict) -- writes the dict directly
+        2. save(home_base, currency, xp_system, inventory=None) -- builds the dict
+        """
+        if isinstance(state, dict):
+            data = state
+        elif state is not None:
+            # Legacy calling convention: save(home_base, currency, xp_system, ...)
+            home_base = state
+            currency = kwargs.get("currency") or (
+                kwargs.get("currency") if "currency" in kwargs else None
+            )
+            xp_system = kwargs.get("xp_system")
+            inventory = kwargs.get("inventory")
+            # Try to build from objects
+            data = {
+                "version": SAVE_VERSION,
+                "player": {
+                    "level": getattr(xp_system, "level", 1) if xp_system else 1,
+                    "xp": getattr(xp_system, "xp", 0) if xp_system else 0,
+                    "money": getattr(currency, "balance", 0) if currency else 0,
+                },
+                "inventory": (
+                    inventory.to_save_list()
+                    if inventory is not None and hasattr(inventory, "to_save_list")
+                    else []
+                ),
+                "skill_tree": {"unlocked_nodes": []},
+                "home_base": (
+                    home_base.to_save_dict()
+                    if hasattr(home_base, "to_save_dict")
+                    else {"armory": 0, "med_bay": 0, "storage": 0, "comms": 0}
+                ),
+            }
+        elif "home_base" in kwargs:
+            # Calling convention: save(home_base=..., currency=..., xp_system=...)
+            home_base = kwargs["home_base"]
+            currency = kwargs.get("currency")
+            xp_system = kwargs.get("xp_system")
+            inventory = kwargs.get("inventory")
+            data = {
+                "version": SAVE_VERSION,
+                "player": {
+                    "level": getattr(xp_system, "level", 1) if xp_system else 1,
+                    "xp": getattr(xp_system, "xp", 0) if xp_system else 0,
+                    "money": getattr(currency, "balance", 0) if currency else 0,
+                },
+                "inventory": (
+                    inventory.to_save_list()
+                    if inventory is not None and hasattr(inventory, "to_save_list")
+                    else []
+                ),
+                "skill_tree": {"unlocked_nodes": []},
+                "home_base": (
+                    home_base.to_save_dict()
+                    if hasattr(home_base, "to_save_dict")
+                    else {"armory": 0, "med_bay": 0, "storage": 0, "comms": 0}
+                ),
+            }
+        else:
+            data = self._new_game()
+
+        # Ensure the saves/ directory exists
+        self._save_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = self._save_path.with_suffix(".tmp")
+        with open(tmp_path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+        tmp_path.replace(self._save_path)
+
+    def _new_game(self) -> dict:
+        """Return the canonical zero-state for a brand-new player."""
         return {
-            'schema_version': 1,
-            'home_base': {'facilities': {}},
-            'currency': {'balance': 0},
-            'xp': {'xp': 0, 'level': 1},
+            "version": SAVE_VERSION,
+            "player": {"level": 1, "xp": 0, "money": 0},
+            "inventory": [],
+            "skill_tree": {"unlocked_nodes": []},
+            "home_base": {"armory": 0, "med_bay": 0, "storage": 0, "comms": 0},
         }
 
-    def _migrate(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        if data.get('schema_version', 0) < 1:
-            data = self._new_game()
+    def _migrate(self, data: dict) -> dict:
+        """Apply any schema migrations required to bring *data* up to the
+        current ``SAVE_VERSION``.
+
+        Args:
+            data: Raw dict loaded from the JSON save file.
+
+        Returns:
+            A fully migrated state dict.
+        """
+        defaults = self._new_game()
+
+        # Ensure all top-level keys exist (forward-compatibility)
+        for key, default_val in defaults.items():
+            if key not in data:
+                data[key] = default_val
+
+        file_version = data.get("version", 0)
+
+        # v0 -> v1 migration
+        if file_version < 1:
+            data["version"] = 1
+
+        # Ensure player block and sub-fields exist
+        data.setdefault("player", {})
+        for pkey in ("level", "xp", "money"):
+            data["player"].setdefault(pkey, defaults["player"][pkey])
+
+        # Ensure home_base block with all facilities
+        data.setdefault("home_base", {})
+        for facility in ("armory", "med_bay", "storage", "comms"):
+            data["home_base"].setdefault(facility, 0)
+
+        # Ensure skill_tree
+        data.setdefault("skill_tree", {"unlocked_nodes": []})
+
         return data

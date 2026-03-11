@@ -32,11 +32,13 @@ class Settings:
     # ── Factory ───────────────────────────────────────────────────────────────
 
     @classmethod
-    def load(cls, path: Path = _SETTINGS_PATH) -> "Settings":
+    def load(cls, path: "Path | str" = _SETTINGS_PATH) -> "Settings":
         """Load settings from *path*.
 
         Falls back to default values if the file is missing, empty, or corrupt.
         """
+        if isinstance(path, str):
+            path = Path(path)
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except (FileNotFoundError, json.JSONDecodeError, OSError):
@@ -48,21 +50,27 @@ class Settings:
         return cls(
             resolution    = resolution,
             fullscreen    = bool(raw.get("fullscreen",    False)),
-            target_fps    = int( raw.get("target_fps",    60)),
-            music_volume  = float(raw.get("music_volume", 0.7)),
-            sfx_volume    = float(raw.get("sfx_volume",   1.0)),
-            master_volume = float(raw.get("master_volume",1.0)),
+            target_fps    = int( raw.get("fps", raw.get("target_fps", 60))),
+            music_volume  = float(raw.get("volume_music", raw.get("music_volume", 0.7))),
+            sfx_volume    = float(raw.get("volume_sfx", raw.get("sfx_volume", 1.0))),
+            master_volume = float(raw.get("volume_master", raw.get("master_volume", 1.0))),
             key_bindings  = _parse_key_bindings(raw.get("key_bindings", {})),
         )
 
-    def save(self, path: Path = _SETTINGS_PATH) -> None:
+    def save(self, path: "Path | str" = _SETTINGS_PATH) -> None:
         """Persist current settings to *path* as pretty-printed JSON."""
+        if isinstance(path, str):
+            path = Path(path)
         data = {
             "resolution":    list(self.resolution),
             "fullscreen":    self.fullscreen,
+            "fps":           self.target_fps,
             "target_fps":    self.target_fps,
+            "volume_music":  self.music_volume,
             "music_volume":  self.music_volume,
+            "volume_sfx":    self.sfx_volume,
             "sfx_volume":    self.sfx_volume,
+            "volume_master": self.master_volume,
             "master_volume": self.master_volume,
             "key_bindings":  {
                 action: pygame.key.name(keycode)
@@ -74,12 +82,51 @@ class Settings:
     # ── Convenience properties ────────────────────────────────────────────────
 
     @property
+    def fps(self) -> int:
+        return self.target_fps
+
+    @fps.setter
+    def fps(self, value: int) -> None:
+        self.target_fps = int(value)
+
+    @property
     def width(self) -> int:
         return self.resolution[0]
 
     @property
     def height(self) -> int:
         return self.resolution[1]
+
+    @property
+    def resolution_tuple(self) -> Tuple[int, int]:
+        if isinstance(self.resolution, (list, tuple)):
+            return (int(self.resolution[0]), int(self.resolution[1]))
+        return self.resolution
+
+    # Volume aliases (some modules use volume_master, others master_volume)
+    @property
+    def volume_master(self) -> float:
+        return self.master_volume
+
+    @volume_master.setter
+    def volume_master(self, value: float) -> None:
+        self.master_volume = value
+
+    @property
+    def volume_music(self) -> float:
+        return self.music_volume
+
+    @volume_music.setter
+    def volume_music(self, value: float) -> None:
+        self.music_volume = value
+
+    @property
+    def volume_sfx(self) -> float:
+        return self.sfx_volume
+
+    @volume_sfx.setter
+    def volume_sfx(self, value: float) -> None:
+        self.sfx_volume = value
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────

@@ -1,4 +1,43 @@
 {
-  "_comment": "Home base facility definitions. Schema: id, name, max_level, levels[]{cost, bonus_type, bonus_value}.",
-  "facilities": []
+  "facilities": [
+    {
+      "id": "armory",
+      "name": "ARMORY",
+      "description": "Improves weapon handling and loot value",
+      "max_level": 5,
+      "levels": [
+        { "cost": 300, "bonus_type": "loot_value_bonus", "bonus_value": 0.10, "description": "+10% loot value" },
+        { "cost": 500, "bonus_type": "loot_value_bonus", "bonus_value": 0.20, "description": "+20% loot value" },
+        { "cost": 800, "bonus_type": "loot_value_bonus", "bonus_value": 0.30, "description": "+30% loot value" },
+        { "cost": 1200, "bonus_type": "loot_value_bonus", "bonus_value": 0.40, "description": "+40% loot value" },
+        { "cost": 2000, "bonus_type": "loot_value_bonus", "bonus_value": 0.50, "description": "+50% loot value" }
+      ]
+    },
+    {
+      "id": "med_bay",
+      "name": "MED BAY",
+      "description": "Increases starting health each round",
+      "max_level": 5,
+      "levels": [
+        { "cost": 250, "bonus_type": "extra_hp", "bonus_value": 25, "description": "+25 starting HP" },
+        { "cost": 450, "bonus_type": "extra_hp", "bonus_value": 50, "description": "+50 starting HP" },
+        { "cost": 700, "bonus_type": "extra_hp", "bonus_value": 75, "description": "+75 starting HP" },
+        { "cost": 1100, "bonus_type": "extra_hp", "bonus_value": 100, "description": "+100 starting HP" },
+        { "cost": 1800, "bonus_type": "extra_hp", "bonus_value": 125, "description": "+125 starting HP" }
+      ]
+    },
+    {
+      "id": "storage",
+      "name": "STORAGE",
+      "description": "Expands inventory capacity each round",
+      "max_level": 5,
+      "levels": [
+        { "cost": 200, "bonus_type": "extra_slots", "bonus_value": 2, "description": "+2 inventory slots" },
+        { "cost": 400, "bonus_type": "extra_slots", "bonus_value": 4, "description": "+4 inventory slots" },
+        { "cost": 650, "bonus_type": "extra_slots", "bonus_value": 6, "description": "+6 inventory slots" },
+        { "cost": 1000, "bonus_type": "extra_slots", "bonus_value": 8, "description": "+8 inventory slots" },
+        { "cost": 1600, "bonus_type": "extra_slots", "bonus_value": 10, "description": "+10 inventory slots" }
+      ]
+    }
+  ]
 }

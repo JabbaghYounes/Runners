@@ -42,8 +42,8 @@ class TileMap:
                 rect=pygame.Rect(r[0], r[1], r[2], r[3]),
                 spawn_points=[(float(p[0]), float(p[1])) for p in zd.get('spawn_points', [])],
                 music_track=zd.get('music_track'),
+                enemy_spawns=zd.get('enemy_spawns', []),
             )
-            zone.enemy_spawns = zd.get('enemy_spawns', [])
             tm.zones.append(zone)
         return tm
 

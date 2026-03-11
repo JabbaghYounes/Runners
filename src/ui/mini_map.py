@@ -26,6 +26,9 @@ class MiniMap:
         scale_y = self.rect.h / max(1, mr.h)
         mx = self.rect.x + int((wx - mr.x) * scale_x)
         my = self.rect.y + int((wy - mr.y) * scale_y)
+        # Clamp to minimap bounds
+        mx = max(self.rect.x, min(mx, self.rect.right - 1))
+        my = max(self.rect.y, min(my, self.rect.bottom - 1))
         return (mx, my)
 
     def draw(self, surface: pygame.Surface) -> None:
@@ -36,8 +39,16 @@ class MiniMap:
         pygame.draw.rect(surface, BORDER_DIM, self.rect, 1)
         # Zones
         for i, zone in enumerate(self._state.zones):
-            color = ZONE_COLORS[i % len(ZONE_COLORS)]
-            r = pygame.Rect(*zone.rect_tuple)
+            color = getattr(zone, 'color', ZONE_COLORS[i % len(ZONE_COLORS)])
+            # Support both world_rect (new) and rect_tuple (legacy)
+            wr = getattr(zone, 'world_rect', None)
+            rt = getattr(zone, 'rect_tuple', None)
+            if wr is not None:
+                r = pygame.Rect(wr) if not isinstance(wr, pygame.Rect) else wr
+            elif rt is not None:
+                r = pygame.Rect(*rt)
+            else:
+                continue
             if self._state.map_world_rect and self._state.map_world_rect.w > 0:
                 mr = self._state.map_world_rect
                 sx = self.rect.x + int((r.x - mr.x) / mr.w * self.rect.w)

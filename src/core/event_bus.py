@@ -35,7 +35,8 @@ class EventBus:
 
     def subscribe(self, event: str, callback: Callable[..., None]) -> None:
         """Register *callback* to be invoked whenever *event* is emitted."""
-        self._listeners[event].append(callback)
+        if callback not in self._listeners[event]:
+            self._listeners[event].append(callback)
 
     def unsubscribe(self, event: str, callback: Callable[..., None]) -> None:
         """Remove *callback* from *event*'s listener list (no-op if absent)."""
@@ -46,14 +47,29 @@ class EventBus:
 
     # ── Emission ──────────────────────────────────────────────────────────────
 
-    def emit(self, event: str, **kwargs: Any) -> None:
-        """Invoke every listener registered for *event* with **kwargs**.
+    def emit(self, event: str, *args: Any, **kwargs: Any) -> None:
+        """Invoke every listener registered for *event* with **kwargs.
 
-        Iterates over a snapshot of the listener list so that a listener may
-        safely call ``unsubscribe`` during its own invocation.
+        Also accepts a single positional dict arg for backwards compatibility:
+        ``emit("event", {"key": "val"})`` is equivalent to
+        ``emit("event", key="val")``.
         """
+        if args and isinstance(args[0], dict) and not kwargs:
+            kwargs = args[0]
         for callback in list(self._listeners[event]):
-            callback(**kwargs)
+            try:
+                callback(**kwargs)
+            except TypeError:
+                # Fallback: pass kwargs dict as a single positional arg
+                try:
+                    callback(kwargs)
+                except TypeError:
+                    pass
+
+    # publish is an alias for emit (used by some subsystems)
+    def publish(self, event: str, **kwargs: Any) -> None:
+        """Alias for :meth:`emit`."""
+        self.emit(event, **kwargs)
 
     # ── Utility ───────────────────────────────────────────────────────────────
 
@@ -72,3 +88,7 @@ class EventBus:
     def listener_count(self, event: str) -> int:
         """Return the number of listeners currently subscribed to *event*."""
         return len(self._listeners[event])
+
+
+# Module-level singleton used by modules that import it directly.
+event_bus = EventBus()

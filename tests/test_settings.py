@@ -12,7 +12,7 @@ def test_default_values():
     assert s.volume_master == 1.0
     assert s.volume_music == 0.7
     assert s.volume_sfx == 1.0
-    assert s.resolution == [1280, 720]
+    assert list(s.resolution) == [1280, 720]
     assert s.fps == 60
 
 
@@ -62,4 +62,4 @@ def test_resolution_loaded_correctly(tmp_path):
     cfg = tmp_path / "settings.json"
     cfg.write_text(json.dumps({"resolution": [1920, 1080]}))
     s = Settings.load(path=str(cfg))
-    assert s.resolution == [1920, 1080]
+    assert list(s.resolution) == [1920, 1080]

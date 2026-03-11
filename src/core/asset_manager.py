@@ -38,6 +38,7 @@ class AssetManager:
         self._sounds: Dict[str, pygame.mixer.Sound]         = {}
         self._fonts:  Dict[_FontKey,  pygame.font.Font]     = {}
         self._audio_available: bool = True
+        self._sound_failures: set = set()  # paths that failed to load
 
     # ── Images ────────────────────────────────────────────────────────────────
 
@@ -68,11 +69,13 @@ class AssetManager:
                 surf = surf.convert_alpha() if alpha else surf.convert()
                 if scale:
                     surf = pygame.transform.scale(surf, scale)
+                self._images[key] = surf
             except (FileNotFoundError, pygame.error):
-                w, h = scale or (32, 32)
-                surf = pygame.Surface((w, h), pygame.SRCALPHA if alpha else 0)
-                surf.fill((255, 0, 255))  # magenta  ← missing-asset indicator
-            self._images[key] = surf
+                # Return a magenta placeholder so missing assets are visible
+                w, h = scale if scale else (32, 32)
+                placeholder = pygame.Surface((w, h), pygame.SRCALPHA)
+                placeholder.fill((255, 0, 255, 255))
+                self._images[key] = placeholder
         return self._images[key]
 
     # ── Sounds ────────────────────────────────────────────────────────────────
@@ -89,11 +92,24 @@ class AssetManager:
         """
         if not self._audio_available:
             return None
+        if rel_path in self._sound_failures:
+            return None
         if rel_path not in self._sounds:
+            import sys
+            _pg = sys.modules.get("pygame", pygame)
+            try:
+                if not _pg.mixer.get_init():
+                    self._sound_failures.add(rel_path)
+                    return None
+            except Exception:
+                self._sound_failures.add(rel_path)
+                return None
             full_path = _ASSETS_ROOT / "audio" / rel_path
             try:
-                self._sounds[rel_path] = pygame.mixer.Sound(str(full_path))
-            except (FileNotFoundError, pygame.error):
+                snd = _pg.mixer.Sound(str(full_path))
+                self._sounds[rel_path] = snd
+            except Exception:
+                self._sound_failures.add(rel_path)
                 return None
         return self._sounds.get(rel_path)
 
@@ -117,12 +133,12 @@ class AssetManager:
         key: _FontKey = (name or "", size)
         if key not in self._fonts:
             try:
-                self._fonts[key] = (
-                    pygame.font.Font(name, size)
-                    if name
-                    else pygame.font.Font(None, size)
-                )
-            except (FileNotFoundError, pygame.error):
+                if name:
+                    self._fonts[key] = pygame.font.Font(name, size)
+                else:
+                    self._fonts[key] = pygame.font.Font(None, size)
+            except (FileNotFoundError, pygame.error, OSError):
+                # Fall back to the default system font
                 self._fonts[key] = pygame.font.Font(None, size)
         return self._fonts[key]
 
@@ -144,3 +160,4 @@ class AssetManager:
         self._images.clear()
         self._sounds.clear()
         self._fonts.clear()
+        self._sound_failures.clear()

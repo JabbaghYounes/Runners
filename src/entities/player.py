@@ -1,8 +1,8 @@
-"""Player entity — input intent, state machine, hitbox management, animation."""
+"""Player entity — input intent, state machine, hitbox, health, buffs, stats."""
 from __future__ import annotations
 
 from enum import Enum, auto
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 import pygame
 
@@ -13,7 +13,10 @@ from src.constants import (
     KEY_BINDINGS,
 )
 from src.entities.entity import Entity
-from src.entities.animation_controller import AnimationController
+
+if TYPE_CHECKING:
+    from src.inventory.inventory import Inventory
+    from src.systems.buff_system import ActiveBuff, BuffSystem
 
 
 class MovementState(Enum):
@@ -27,7 +30,7 @@ class MovementState(Enum):
     FALLING     = auto()
 
 
-# Map MovementState → animation key and FPS
+# Map MovementState -> animation key and FPS
 _STATE_ANIM: dict[MovementState, tuple[str, int]] = {
     MovementState.IDLE:        ("idle",        6),
     MovementState.WALKING:     ("walk",        10),
@@ -39,30 +42,42 @@ _STATE_ANIM: dict[MovementState, tuple[str, int]] = {
     MovementState.FALLING:     ("fall",        4),
 }
 
-_FOOTSTEP_INTERVAL_WALK   = 0.30   # seconds between footstep events while walking
-_FOOTSTEP_INTERVAL_SPRINT  = 0.18  # seconds between footstep events while sprinting
-_MIN_FOOTSTEP_VX           = 10.0  # |vx| must exceed this to emit footsteps
+_FOOTSTEP_INTERVAL_WALK   = 0.30
+_FOOTSTEP_INTERVAL_SPRINT = 0.18
+_MIN_FOOTSTEP_VX          = 10.0
+
+# Default per-character base stats (before skill-tree / home-base bonuses).
+_BASE_STATS: dict[str, float] = {
+    "speed": 200.0,
+    "damage": 25.0,
+    "armor": 0.0,
+}
 
 
 class Player(Entity):
-    """Playable character.
+    """Playable character with movement physics, health, buffs, and inventory.
 
-    Parameters
-    ----------
-    x, y:
-        Initial world-space position (top-left of rect).
-    event_bus:
-        Optional EventBus instance.  Player emits ``"footstep"``,
-        ``"player_landed"``, and ``"player_slide"`` events.
+    Supports two construction modes:
+    - Positional:  Player(x, y)              -- used by movement/physics tests
+    - Keyword:     Player(max_health=100, buff_system=bs) -- used by consumable tests
     """
+
+    is_player_controlled: bool = True
 
     def __init__(
         self,
         x: float = 0.0,
         y: float = 0.0,
         event_bus=None,
+        *,
+        max_health: int = 100,
+        buff_system: "BuffSystem | None" = None,
+        inventory: "Inventory | None" = None,
+        width: int = 28,
+        height: int | None = None,
     ) -> None:
-        super().__init__(x, y, w=28, h=NORMAL_HEIGHT)
+        h = height if height is not None else NORMAL_HEIGHT
+        super().__init__(x, y, w=width, h=h)
 
         # Physics state (written by PhysicsSystem)
         self.vx: float = 0.0
@@ -76,11 +91,11 @@ class Player(Entity):
 
         # Slide state
         self.slide_timer: float = 0.0
-        self.slide_dir: int = 1        # +1 right, -1 left
+        self.slide_dir: int = 1
 
         # Crouch state
         self._crouching: bool = False
-        self._force_crouched: bool = False  # True when ceiling prevents uncrouch
+        self._force_crouched: bool = False
         self._sprinting: bool = False
 
         # Movement state machine
@@ -93,32 +108,121 @@ class Player(Entity):
         # EventBus (optional)
         self._event_bus = event_bus
 
-        # Animation controller (falls back to solid-colour surfaces if no assets)
-        state_fps_map = {anim: fps for anim, fps in _STATE_ANIM.values()}
-        self.animation_controller = AnimationController.from_sprite_dir(
-            "assets/sprites/player", state_fps_map
-        )
+        # Health / armor
+        self.max_health: int = max_health
+        self.health: int = max_health
+        self.armor: int = 0
+        self.max_armor: int = 100
+
+        # Buff system
+        self.active_buffs: list = []
+        self._buff_system = buff_system
+
+        # Inventory — defaults to an Inventory object when none is given
+        if inventory is not None:
+            self.inventory = inventory
+        else:
+            try:
+                from src.inventory.inventory import Inventory
+                self.inventory = Inventory()
+            except Exception:
+                self.inventory = []
+
+        # Shooting
+        self._shoot_pressed: bool = False
+
+        # Animation controller (optional -- falls back to solid-colour)
+        self.animation_controller = None
+        try:
+            from src.entities.animation_controller import AnimationController
+            state_fps_map = {anim: fps for anim, fps in _STATE_ANIM.values()}
+            self.animation_controller = AnimationController.from_sprite_dir(
+                "assets/sprites/player", state_fps_map
+            )
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Dependency injection
+    # ------------------------------------------------------------------
+
+    def set_buff_system(self, buff_system: "BuffSystem") -> None:
+        self._buff_system = buff_system
+
+    # ------------------------------------------------------------------
+    # Health
+    # ------------------------------------------------------------------
+
+    def heal(self, amount: int) -> int:
+        """Restore HP clamped to max_health. Returns actual HP gained."""
+        if amount <= 0:
+            return 0
+        before = self.health
+        self.health = min(self.max_health, self.health + amount)
+        gained = self.health - before
+        if gained > 0:
+            from src.core.event_bus import event_bus as _bus
+            _bus.emit("player_healed", player=self, amount=gained)
+        return gained
+
+    def take_damage(self, amount: int) -> int:
+        """Apply damage after armor reduction. Returns effective HP lost."""
+        effective = max(0, amount - self.armor)
+        self.health = max(0, self.health - effective)
+        if self.health == 0 and self.alive:
+            self.alive = False
+            from src.core.event_bus import event_bus as _bus
+            _bus.emit("player_killed", victim=self)
+        return effective
+
+    # ------------------------------------------------------------------
+    # Buffs
+    # ------------------------------------------------------------------
+
+    def apply_buff(self, buff: "ActiveBuff") -> None:
+        if self._buff_system is not None:
+            self._buff_system.add_buff(self, buff)
+        else:
+            self.active_buffs.append(buff)
+            from src.core.event_bus import event_bus as _bus
+            _bus.emit(
+                "buff_applied",
+                entity=self,
+                buff_type=buff.buff_type,
+                value=buff.value,
+                duration=buff.duration,
+                icon_key=buff.icon_key,
+            )
+
+    # ------------------------------------------------------------------
+    # Stat access
+    # ------------------------------------------------------------------
+
+    def get_stat(self, name: str) -> float:
+        base = _BASE_STATS.get(name, 0.0)
+        if self._buff_system is not None:
+            modifier = self._buff_system.get_modifiers(self, name)
+        else:
+            modifier = sum(
+                b.value for b in self.active_buffs if b.buff_type == name
+            )
+        return base + modifier
 
     # ------------------------------------------------------------------
     # Input handling
     # ------------------------------------------------------------------
 
-    def handle_input(self, keys: dict, events: List[pygame.event.Event]) -> None:
-        """Translate raw key state + event list into intent flags.
-
-        Modifies ``target_vx``, ``_jump_intent``, and ``_slide_intent``.
-        Does NOT write ``vx`` or ``vy`` directly.
-        """
+    def handle_input(self, keys, events: List[pygame.event.Event]) -> None:
         bindings = KEY_BINDINGS if KEY_BINDINGS else {
             "move_left": pygame.K_a, "move_right": pygame.K_d,
             "jump": pygame.K_SPACE, "crouch": pygame.K_LCTRL,
             "slide": pygame.K_c,    "sprint": pygame.K_LSHIFT,
         }
 
-        left  = keys.get(bindings.get("move_left",  pygame.K_a), False)
-        right = keys.get(bindings.get("move_right", pygame.K_d), False)
-        self._sprinting = keys.get(bindings.get("sprint", pygame.K_LSHIFT), False)
-        self._crouching = keys.get(bindings.get("crouch", pygame.K_LCTRL),  False)
+        left  = keys.get(bindings.get("move_left",  pygame.K_a), False) if isinstance(keys, dict) else keys[bindings.get("move_left", pygame.K_a)]
+        right = keys.get(bindings.get("move_right", pygame.K_d), False) if isinstance(keys, dict) else keys[bindings.get("move_right", pygame.K_d)]
+        self._sprinting = keys.get(bindings.get("sprint", pygame.K_LSHIFT), False) if isinstance(keys, dict) else keys[bindings.get("sprint", pygame.K_LSHIFT)]
+        self._crouching = keys.get(bindings.get("crouch", pygame.K_LCTRL),  False) if isinstance(keys, dict) else keys[bindings.get("crouch", pygame.K_LCTRL)]
 
         if self._crouching or self._force_crouched:
             speed = CROUCH_SPEED
@@ -157,14 +261,11 @@ class Player(Entity):
     # ------------------------------------------------------------------
 
     def update(self, dt: float, tile_map=None) -> None:  # type: ignore[override]
-        """Advance slide timer, manage hitbox, resolve MovementState, sync animation."""
-
         # --- Slide timer countdown ---
         if self.slide_timer > 0:
             self.slide_timer -= dt
             if self.slide_timer <= 0:
                 self.slide_timer = 0.0
-                # Remain crouched only if Ctrl is held; otherwise stand
                 if not (self._crouching or self._force_crouched):
                     self.uncrouch(tile_map)
 
@@ -218,9 +319,9 @@ class Player(Entity):
         self.movement_state = self._resolve_state()
 
         # --- Sync animation controller ---
-        anim_key, _ = _STATE_ANIM[self.movement_state]
-        facing_right = self.slide_dir >= 0
         if self.animation_controller is not None:
+            anim_key, _ = _STATE_ANIM[self.movement_state]
+            facing_right = self.slide_dir >= 0
             self.animation_controller.set_state(anim_key, facing_right=facing_right)
             self.animation_controller.update(dt)
 
@@ -243,33 +344,28 @@ class Player(Entity):
     # ------------------------------------------------------------------
 
     def crouch(self, tile_map=None) -> None:
-        """Shrink hitbox to CROUCH_HEIGHT, keeping rect.bottom fixed."""
         if self.rect.height == CROUCH_HEIGHT:
             return
         delta = self.rect.height - CROUCH_HEIGHT
         self.rect.height = CROUCH_HEIGHT
-        self.rect.y += delta   # shift top down so bottom stays fixed
+        self.rect.y += delta
         self._crouching = True
         self.movement_state = MovementState.CROUCHING
 
     def start_slide(self) -> None:
-        """Begin a slide: apply burst velocity, set timer, shrink hitbox."""
         self.vx = float(SLIDE_VEL * self.slide_dir)
         self.slide_timer = SLIDE_DURATION
         if self.rect.height != CROUCH_HEIGHT:
             self.crouch()
 
     def uncrouch(self, tile_map=None) -> None:
-        """Attempt to restore NORMAL_HEIGHT; blocked by ceiling tiles."""
         if self.rect.height == NORMAL_HEIGHT:
             self._force_crouched = False
             return
 
-        # Ceiling check: would the restored rect collide with solid tiles?
         if tile_map is not None:
             delta = NORMAL_HEIGHT - CROUCH_HEIGHT
             test_top = self.rect.y - delta
-            # Sample tiles in the vertical band [test_top, rect.top]
             from src.constants import TILE_SIZE
             left_col  = self.rect.left  // TILE_SIZE
             right_col = (self.rect.right - 1) // TILE_SIZE
@@ -279,15 +375,51 @@ class Player(Entity):
                     self._force_crouched = True
                     return
 
-        # Clear — restore height
         delta = NORMAL_HEIGHT - CROUCH_HEIGHT
         self.rect.y -= delta
         self.rect.height = NORMAL_HEIGHT
         self._force_crouched = False
 
     # ------------------------------------------------------------------
+    # Convenience
+    # ------------------------------------------------------------------
+
+    @property
+    def x(self) -> float:
+        return float(self.rect.x)
+
+    @x.setter
+    def x(self, val: float) -> None:
+        self.rect.x = int(val)
+
+    @property
+    def y(self) -> float:
+        return float(self.rect.y)
+
+    @y.setter
+    def y(self, val: float) -> None:
+        self.rect.y = int(val)
+
+    @property
+    def center(self):
+        return (self.rect.centerx, self.rect.centery)
+
+    @property
+    def velocity(self):
+        return pygame.math.Vector2(self.vx, self.vy)
+
+    @velocity.setter
+    def velocity(self, val):
+        if isinstance(val, pygame.math.Vector2):
+            self.vx = val.x
+            self.vy = val.y
+        else:
+            self.vx = val[0]
+            self.vy = val[1]
+
+    # ------------------------------------------------------------------
     # Render
     # ------------------------------------------------------------------
 
-    def render(self, screen: pygame.Surface, camera_offset) -> None:  # type: ignore[override]
+    def render(self, screen: pygame.Surface, camera_offset=(0, 0)) -> None:  # type: ignore[override]
         super().render(screen, camera_offset)

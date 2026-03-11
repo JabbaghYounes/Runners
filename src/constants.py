@@ -66,12 +66,14 @@ FPS      = DEFAULT_FPS
 
 BG_DEEP        = DARK_BG
 BG_MID         = ( 15,  22,  38)    # slightly lighter mid-tone for layering
+BG_PANEL       = ( 20,  24,  38)    # #141826 -- panel fill
 
 ACCENT_CYAN    = NEON_CYAN
 ACCENT_GREEN   = NEON_GREEN
 ACCENT_ORANGE  = NEON_ORANGE
 ACCENT_RED     = NEON_RED
 ACCENT_MAGENTA = (255,   0, 180)    # secondary accent / special alerts
+DANGER_RED     = (255,  32,  64)    # #FF2040 -- danger, critical health
 
 BORDER_DIM     = ( 40,  60,  80)
 BORDER_BRIGHT  = ( 80, 120, 160)
@@ -99,12 +101,35 @@ CROUCH_HEIGHT = 24   # pixels — crouching / sliding hitbox height
 
 PICKUP_RADIUS = 48   # pixels — loot interaction distance
 
+# ── PvP constants ──────────────────────────────────────────────────────────
+PVP_KILL_XP: int = 150
+PVP_AGENT_COUNT: int = 3
+PVP_FRIENDLY_FIRE: bool = True
+PVP_AGENT_AGGRO_RANGE: float = 300.0
+PVP_AGENT_SHOOT_RANGE: float = 150.0
+
 # ── Default key bindings (fallback when settings.json is missing a binding) ───
 DEFAULT_KEYS: dict[str, int] = {
     "move_left":  pygame.K_a,
     "move_right": pygame.K_d,
     "jump":       pygame.K_SPACE,
     "crouch":     pygame.K_s,
+    "reload":     pygame.K_r,
+    "interact":   pygame.K_e,
+    "inventory":  pygame.K_TAB,
+    "map":        pygame.K_m,
+    "pause":      pygame.K_ESCAPE,
+}
+
+# Active key bindings — populated from Settings at start-up; modules that
+# need bindings import this dict.  Falls back to DEFAULT_KEYS values.
+KEY_BINDINGS: dict[str, int] = {
+    "move_left":  pygame.K_a,
+    "move_right": pygame.K_d,
+    "jump":       pygame.K_SPACE,
+    "crouch":     pygame.K_LCTRL,
+    "sprint":     pygame.K_LSHIFT,
+    "slide":      pygame.K_c,
     "reload":     pygame.K_r,
     "interact":   pygame.K_e,
     "inventory":  pygame.K_TAB,

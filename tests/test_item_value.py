@@ -225,9 +225,9 @@ class TestItemDatabaseLoad:
         assert len(db) > 0
 
     def test_load_contains_expected_count(self):
-        """data/items.json contains exactly 23 seed items."""
+        """data/items.json contains exactly 36 seed items."""
         db = _fresh_db()
-        assert len(db) == 23
+        assert len(db) == 36
 
     def test_all_ids_returns_sorted_list(self):
         db = _fresh_db()

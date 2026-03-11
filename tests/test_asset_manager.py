@@ -1,6 +1,7 @@
 """Tests for AssetManager — cache behaviour, missing files, mixer unavailable."""
 import sys
 from unittest.mock import MagicMock, patch
+import pygame
 import pytest
 
 from src.core.asset_manager import AssetManager
@@ -141,15 +142,16 @@ class TestLoadSoundBadFile:
 # ---------------------------------------------------------------------------
 
 class TestLoadImageStub:
-    def test_returns_none(self):
-        assert AssetManager().load_image("any/sprite.png") is None
+    def test_returns_fallback_surface(self):
+        result = AssetManager().load_image("any/sprite.png")
+        assert isinstance(result, pygame.Surface)
 
-    def test_repeated_calls_return_none(self):
+    def test_repeated_calls_return_same_fallback(self):
         manager = AssetManager()
         r1 = manager.load_image("sprite.png")
         r2 = manager.load_image("sprite.png")
-        assert r1 is None
-        assert r2 is None
+        assert isinstance(r1, pygame.Surface)
+        assert r1 is r2
 
 
 # ---------------------------------------------------------------------------
@@ -157,16 +159,19 @@ class TestLoadImageStub:
 # ---------------------------------------------------------------------------
 
 class TestLoadFontStub:
-    def test_returns_none(self):
-        assert AssetManager().load_font("any/font.ttf", 16) is None
+    def test_returns_fallback_font(self):
+        result = AssetManager().load_font("any/font.ttf", 16)
+        assert isinstance(result, pygame.font.Font)
 
-    def test_different_sizes_both_return_none(self):
+    def test_different_sizes_return_fallback_fonts(self):
         manager = AssetManager()
-        assert manager.load_font("font.ttf", 14) is None
-        assert manager.load_font("font.ttf", 32) is None
+        r1 = manager.load_font("font.ttf", 14)
+        r2 = manager.load_font("font.ttf", 32)
+        assert isinstance(r1, pygame.font.Font)
+        assert isinstance(r2, pygame.font.Font)
 
     def test_font_cached_by_path_and_size(self):
         manager = AssetManager()
         r1 = manager.load_font("font.ttf", 16)
         r2 = manager.load_font("font.ttf", 16)
-        assert r1 is r2  # same cache slot (both None)
+        assert r1 is r2

@@ -1,101 +1,188 @@
-"""Pause Menu — overlay on frozen GameScene."""
+"""Pause Menu -- pushed over the GameScene when ESC is pressed.
+
+Stack state while paused:  [GameScene, PauseMenu]
+
+The SceneManager renders the frozen GameScene first (bottom of stack), then
+PauseMenu draws a semi-transparent vignette over it followed by the panel.
+
+Buttons:
+    RESUME       -- pops PauseMenu, GameScene resumes.
+    RESTART      -- ConfirmDialog -> replace(GameScene).
+    EXIT TO MENU -- ConfirmDialog -> replace_all(MainMenu).
+
+ESC key is equivalent to RESUME.
+"""
+from __future__ import annotations
+
+from typing import List
+
 import pygame
-import sys
-from typing import List, Any, Optional
 
 from src.scenes.base_scene import BaseScene
-from src.ui.widgets import Button, Panel, ConfirmDialog
-from src.constants import SCREEN_W, SCREEN_H, PANEL_BG, BORDER_BRIGHT, ACCENT_CYAN, TEXT_BRIGHT
+from src.ui.widgets import Button, ConfirmDialog, Label, Panel
+from src.constants import ACCENT_CYAN, BG_DEEP, SCREEN_H, SCREEN_W, TEXT_SECONDARY
+
+
+def _load_font(assets, name, size):
+    """Load a font via assets or fall back to pygame default."""
+    if assets is not None and hasattr(assets, 'load_font'):
+        try:
+            return assets.load_font(name, size)
+        except Exception:
+            pass
+    try:
+        return pygame.font.Font(name, size)
+    except Exception:
+        return pygame.font.SysFont('monospace', size)
 
 
 class PauseMenu(BaseScene):
-    def __init__(self, sm: Any, settings: Any, assets: Any):
-        self._sm = sm
+    """Semi-transparent pause overlay with RESUME / RESTART / EXIT TO MENU."""
+
+    _PANEL_W = 260
+    _PANEL_H = 240
+
+    def __init__(
+        self,
+        scene_manager,
+        settings=None,
+        assets=None,
+    ) -> None:
+        self._sm = scene_manager
         self._settings = settings
         self._assets = assets
-        self._confirm: Optional[ConfirmDialog] = None
 
-        bw, bh = 260, 50
+        # Fonts
+        font_title = _load_font(assets, None, 30)
+        font_btn = _load_font(assets, None, 18)
+        font_dialog = _load_font(assets, None, 14)
+
+        # Full-screen vignette (70% alpha dark overlay)
+        self._vignette = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        r, g, b = BG_DEEP
+        self._vignette.fill((r, g, b, 178))
+
+        # Central panel
+        px = (SCREEN_W - self._PANEL_W) // 2
+        py = (SCREEN_H - self._PANEL_H) // 2
+        self._panel = Panel(pygame.Rect(px, py, self._PANEL_W, self._PANEL_H), alpha=235)
+
+        # "PAUSED" heading
+        self._lbl_title = Label(
+            "PAUSED",
+            font_title,
+            ACCENT_CYAN,
+            (SCREEN_W // 2, py + 38),
+            glow=True,
+        )
+
+        # Buttons
+        bw, bh = 210, 40
         bx = SCREEN_W // 2 - bw // 2
-        by = SCREEN_H // 2 - 90
 
-        self._buttons: List[Button] = [
-            Button(pygame.Rect(bx, by, bw, bh), "RESUME", 'primary',
-                   on_click=self._resume),
-            Button(pygame.Rect(bx, by + 68, bw, bh), "RESTART", 'secondary',
-                   on_click=self._confirm_restart),
-            Button(pygame.Rect(bx, by + 136, bw, bh), "MAIN MENU", 'ghost',
-                   on_click=self._confirm_exit),
-        ]
-        self._panel = Panel(pygame.Rect(SCREEN_W // 2 - 160, SCREEN_H // 2 - 130, 320, 260))
+        self._btn_resume = Button(
+            pygame.Rect(bx, py + 90, bw, bh),
+            "RESUME",
+            font_btn,
+            "primary",
+            self._on_resume,
+        )
+        self._btn_restart = Button(
+            pygame.Rect(bx, py + 142, bw, bh),
+            "RESTART",
+            font_btn,
+            "secondary",
+            self._on_restart,
+        )
+        self._btn_exit = Button(
+            pygame.Rect(bx, py + 194, bw, bh),
+            "EXIT TO MENU",
+            font_btn,
+            "secondary",
+            self._on_exit,
+        )
 
-    def _resume(self) -> None:
+        # Confirm dialogs
+        self._confirm_restart = ConfirmDialog(
+            "Are you sure?",
+            "You will lose all loot this run.",
+            font_dialog,
+            font_dialog,
+            font_dialog,
+            on_confirm=self._on_restart_confirmed,
+            on_cancel=lambda: self._confirm_restart.hide(),
+        )
+        self._confirm_exit = ConfirmDialog(
+            "Are you sure?",
+            "You will lose all loot this run.",
+            font_dialog,
+            font_dialog,
+            font_dialog,
+            on_confirm=self._on_exit_confirmed,
+            on_cancel=lambda: self._confirm_exit.hide(),
+        )
+
+    # ------------------------------------------------------------------
+    # Button / dialog callbacks
+    # ------------------------------------------------------------------
+
+    def _on_resume(self) -> None:
         self._sm.pop()
 
-    def _confirm_restart(self) -> None:
-        self._confirm = ConfirmDialog(
-            "Restart round?",
-            on_confirm=self._do_restart,
-            on_cancel=self._cancel_confirm,
-        )
+    def _on_restart(self) -> None:
+        self._confirm_restart.show((SCREEN_W, SCREEN_H))
 
-    def _confirm_exit(self) -> None:
-        self._confirm = ConfirmDialog(
-            "Return to Main Menu?",
-            on_confirm=self._do_exit,
-            on_cancel=self._cancel_confirm,
-        )
+    def _on_exit(self) -> None:
+        self._confirm_exit.show((SCREEN_W, SCREEN_H))
 
-    def _cancel_confirm(self) -> None:
-        self._confirm = None
-
-    def _do_restart(self) -> None:
+    def _on_restart_confirmed(self) -> None:
+        self._confirm_restart.hide()
         from src.scenes.game_scene import GameScene
-        from src.core.event_bus import EventBus
-        from src.progression.xp_system import XPSystem
-        from src.progression.currency import Currency
-        from src.progression.home_base import HomeBase
-        eb = EventBus()
-        xp = XPSystem()
-        cur = Currency()
-        hb = HomeBase()
-        # Replace current + pause with a fresh GameScene
-        self._sm.replace_all(GameScene(
-            self._sm, self._settings, self._assets, eb, xp, cur, hb))
+        self._sm.replace(GameScene(self._sm, self._settings, self._assets))
 
-    def _do_exit(self) -> None:
+    def _on_exit_confirmed(self) -> None:
+        self._confirm_exit.hide()
         from src.scenes.main_menu import MainMenu
         self._sm.replace_all(MainMenu(self._sm, self._settings, self._assets))
 
+    # ------------------------------------------------------------------
+    # BaseScene implementation
+    # ------------------------------------------------------------------
+
     def handle_events(self, events: List[pygame.event.Event]) -> None:
         for event in events:
+            # Confirm dialogs take priority
+            if self._confirm_restart.active:
+                self._confirm_restart.handle_event(event)
+                continue
+            if self._confirm_exit.active:
+                self._confirm_exit.handle_event(event)
+                continue
+
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                self._resume()
+                self._on_resume()
                 return
-            if self._confirm:
-                self._confirm.handle_event(event)
-            else:
-                for btn in self._buttons:
-                    btn.handle_event(event)
+
+            self._btn_resume.handle_event(event)
+            self._btn_restart.handle_event(event)
+            self._btn_exit.handle_event(event)
 
     def update(self, dt: float) -> None:
-        pass
+        pass  # Paused -- nothing to advance
 
     def render(self, screen: pygame.Surface) -> None:
-        # Semi-transparent overlay
-        overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 160))
-        screen.blit(overlay, (0, 0))
+        # Vignette over the frozen game world
+        screen.blit(self._vignette, (0, 0))
 
+        # Panel and controls
         self._panel.draw(screen)
+        self._lbl_title.draw(screen)
+        self._btn_resume.draw(screen)
+        self._btn_restart.draw(screen)
+        self._btn_exit.draw(screen)
 
-        font = pygame.font.Font(None, 36)
-        title = font.render("PAUSED", True, ACCENT_CYAN)
-        screen.blit(title, (SCREEN_W // 2 - title.get_width() // 2,
-                             SCREEN_H // 2 - 115))
-
-        for btn in self._buttons:
-            btn.draw(screen)
-
-        if self._confirm:
-            self._confirm.draw(screen)
+        # Active confirm dialog
+        if self._confirm_restart.active:
+            self._confirm_restart.draw(screen)
+        if self._confirm_exit.active:
+            self._confirm_exit.draw(screen)

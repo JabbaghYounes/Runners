@@ -1,4 +1,94 @@
 {
-  "_comment": "Enemy type definitions. Schema: id, name, hp, speed, aggro_range, damage, loot_table[], sprite.",
-  "enemies": []
+  "enemies": {
+    "grunt": {
+      "display_name": "Guard Bot",
+      "sprite_sheet": "assets/sprites/enemies/grunt.png",
+      "frame_width": 32,
+      "frame_height": 48,
+      "animations": {
+        "patrol": [0, 1, 2, 3],
+        "aggro":  [4, 5, 6, 7],
+        "attack": [8, 9],
+        "dead":   [10, 11, 12, 13]
+      },
+      "hp": 50,
+      "patrol_speed": 40,
+      "move_speed": 80,
+      "aggro_range": 200,
+      "attack_range": 40,
+      "attack_damage": 10,
+      "attack_cooldown": 1.2,
+      "xp_reward": 25,
+      "loot_table": "grunt_drops"
+    },
+    "heavy": {
+      "display_name": "Heavy Bot",
+      "sprite_sheet": "assets/sprites/enemies/heavy.png",
+      "frame_width": 48,
+      "frame_height": 64,
+      "animations": {
+        "patrol": [0, 1, 2, 3],
+        "aggro":  [4, 5, 6, 7],
+        "attack": [8, 9, 10],
+        "dead":   [11, 12, 13, 14, 15]
+      },
+      "hp": 150,
+      "patrol_speed": 25,
+      "move_speed": 50,
+      "aggro_range": 180,
+      "attack_range": 50,
+      "attack_damage": 25,
+      "attack_cooldown": 2.0,
+      "xp_reward": 60,
+      "loot_table": "heavy_drops"
+    },
+    "sniper": {
+      "display_name": "Sniper Bot",
+      "sprite_sheet": "assets/sprites/enemies/sniper.png",
+      "frame_width": 32,
+      "frame_height": 48,
+      "animations": {
+        "patrol": [0, 1, 2, 3],
+        "aggro":  [4, 5, 6, 7],
+        "attack": [8, 9],
+        "dead":   [10, 11, 12, 13]
+      },
+      "hp": 30,
+      "patrol_speed": 30,
+      "move_speed": 60,
+      "aggro_range": 350,
+      "attack_range": 300,
+      "attack_damage": 35,
+      "attack_cooldown": 2.5,
+      "xp_reward": 40,
+      "loot_table": "sniper_drops"
+    }
+  },
+  "loot_tables": {
+    "grunt_drops": {
+      "rolls": 1,
+      "entries": [
+        {"item_id": "ammo_pistol",   "weight": 60},
+        {"item_id": "medkit_small",  "weight": 30},
+        {"item_id": "weapon_pistol", "weight": 10}
+      ]
+    },
+    "heavy_drops": {
+      "rolls": 2,
+      "entries": [
+        {"item_id": "ammo_rifle",    "weight": 50},
+        {"item_id": "medkit_large",  "weight": 25},
+        {"item_id": "armor_light",   "weight": 20},
+        {"item_id": "weapon_rifle",  "weight": 5}
+      ]
+    },
+    "sniper_drops": {
+      "rolls": 1,
+      "entries": [
+        {"item_id": "ammo_sniper",   "weight": 55},
+        {"item_id": "medkit_small",  "weight": 25},
+        {"item_id": "weapon_sniper", "weight": 20}
+      ]
+    }
+  }
 }

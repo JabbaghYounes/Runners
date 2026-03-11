@@ -1,4 +1,528 @@
 {
-  "_comment": "Item catalog. Each entry defines one item type. Schema: id, name, type (weapon|armor|consumable|attachment), rarity, stats{}, sprite.",
-  "items": []
+  "pistol_mk1": {
+    "id": "pistol_mk1",
+    "name": "MK1 Sidearm",
+    "type": "weapon",
+    "rarity": "common",
+    "value": 80,
+    "weight": 1.0,
+    "sprite": "items/pistol_mk1",
+    "stats": {
+      "damage": 18,
+      "fire_rate": 3.0,
+      "magazine": 12,
+      "reload_time": 1.5,
+      "range": 300
+    }
+  },
+  "smg_rattler": {
+    "id": "smg_rattler",
+    "name": "Rattler SMG",
+    "type": "weapon",
+    "rarity": "common",
+    "value": 120,
+    "weight": 1.5,
+    "sprite": "items/smg_rattler",
+    "stats": {
+      "damage": 12,
+      "fire_rate": 8.0,
+      "magazine": 25,
+      "reload_time": 2.0,
+      "range": 220
+    }
+  },
+  "shotgun_brawler": {
+    "id": "shotgun_brawler",
+    "name": "Brawler Shotgun",
+    "type": "weapon",
+    "rarity": "uncommon",
+    "value": 250,
+    "weight": 2.5,
+    "sprite": "items/shotgun_brawler",
+    "stats": {
+      "damage": 65,
+      "fire_rate": 1.0,
+      "magazine": 6,
+      "reload_time": 2.8,
+      "range": 150
+    }
+  },
+  "rifle_vantage": {
+    "id": "rifle_vantage",
+    "name": "Vantage Rifle",
+    "type": "weapon",
+    "rarity": "uncommon",
+    "value": 350,
+    "weight": 3.0,
+    "sprite": "items/rifle_vantage",
+    "stats": {
+      "damage": 40,
+      "fire_rate": 2.5,
+      "magazine": 20,
+      "reload_time": 2.2,
+      "range": 500
+    }
+  },
+  "rifle_pulse": {
+    "id": "rifle_pulse",
+    "name": "Pulse Assault Rifle",
+    "type": "weapon",
+    "rarity": "rare",
+    "value": 550,
+    "weight": 3.2,
+    "sprite": "items/rifle_pulse",
+    "stats": {
+      "damage": 35,
+      "fire_rate": 5.0,
+      "magazine": 30,
+      "reload_time": 2.0,
+      "range": 420
+    }
+  },
+  "sniper_herald": {
+    "id": "sniper_herald",
+    "name": "Herald Sniper",
+    "type": "weapon",
+    "rarity": "rare",
+    "value": 680,
+    "weight": 4.0,
+    "sprite": "items/sniper_herald",
+    "stats": {
+      "damage": 120,
+      "fire_rate": 0.7,
+      "magazine": 5,
+      "reload_time": 3.5,
+      "range": 900
+    }
+  },
+  "smg_torrent": {
+    "id": "smg_torrent",
+    "name": "Torrent SMG",
+    "type": "weapon",
+    "rarity": "epic",
+    "value": 1000,
+    "weight": 1.8,
+    "sprite": "items/smg_torrent",
+    "stats": {
+      "damage": 20,
+      "fire_rate": 12.0,
+      "magazine": 40,
+      "reload_time": 1.8,
+      "range": 260
+    }
+  },
+  "rifle_sovereign": {
+    "id": "rifle_sovereign",
+    "name": "Sovereign Marksman",
+    "type": "weapon",
+    "rarity": "epic",
+    "value": 1400,
+    "weight": 3.5,
+    "sprite": "items/rifle_sovereign",
+    "stats": {
+      "damage": 70,
+      "fire_rate": 2.0,
+      "magazine": 15,
+      "reload_time": 2.5,
+      "range": 650
+    }
+  },
+  "cannon_obliterator": {
+    "id": "cannon_obliterator",
+    "name": "Obliterator Cannon",
+    "type": "weapon",
+    "rarity": "legendary",
+    "value": 3500,
+    "weight": 6.0,
+    "sprite": "items/cannon_obliterator",
+    "stats": {
+      "damage": 200,
+      "fire_rate": 0.5,
+      "magazine": 3,
+      "reload_time": 4.0,
+      "range": 700
+    }
+  },
+  "light_vest": {
+    "id": "light_vest",
+    "name": "Light Vest",
+    "type": "armor",
+    "rarity": "common",
+    "value": 60,
+    "weight": 2.0,
+    "armor_value": 5,
+    "sprite": "items/light_vest",
+    "stats": {
+      "armor": 5,
+      "mobility_penalty": 0
+    }
+  },
+  "tac_vest": {
+    "id": "tac_vest",
+    "name": "Tactical Vest",
+    "type": "armor",
+    "rarity": "uncommon",
+    "value": 280,
+    "weight": 4.0,
+    "armor_value": 12,
+    "sprite": "items/tac_vest",
+    "stats": {
+      "armor": 12,
+      "mobility_penalty": 5
+    }
+  },
+  "ballistic_plate": {
+    "id": "ballistic_plate",
+    "name": "Ballistic Plate",
+    "type": "armor",
+    "rarity": "rare",
+    "value": 480,
+    "weight": 6.5,
+    "armor_value": 22,
+    "sprite": "items/ballistic_plate",
+    "stats": {
+      "armor": 22,
+      "mobility_penalty": 10
+    }
+  },
+  "armor_light": {
+    "id": "armor_light",
+    "name": "Light Runner Vest",
+    "type": "armor",
+    "rarity": "common",
+    "value": 60,
+    "weight": 2.0,
+    "armor_value": 15,
+    "sprite": "items/armor_light",
+    "stats": {
+      "armor": 15,
+      "mobility_penalty": 0
+    }
+  },
+  "armor_tac": {
+    "id": "armor_tac",
+    "name": "Tactical Plate",
+    "type": "armor",
+    "rarity": "uncommon",
+    "value": 280,
+    "weight": 4.0,
+    "armor_value": 35,
+    "sprite": "items/armor_tac",
+    "stats": {
+      "armor": 35,
+      "mobility_penalty": 5
+    }
+  },
+  "armor_heavy": {
+    "id": "armor_heavy",
+    "name": "Enforcer Heavy Vest",
+    "type": "armor",
+    "rarity": "rare",
+    "value": 480,
+    "weight": 6.5,
+    "armor_value": 60,
+    "sprite": "items/armor_heavy",
+    "stats": {
+      "armor": 60,
+      "mobility_penalty": 10
+    }
+  },
+  "armor_exo": {
+    "id": "armor_exo",
+    "name": "Exo-Frame Chestguard",
+    "type": "armor",
+    "rarity": "epic",
+    "value": 1200,
+    "weight": 5.0,
+    "armor_value": 85,
+    "sprite": "items/armor_exo",
+    "stats": {
+      "armor": 85,
+      "mobility_penalty": 5
+    }
+  },
+  "armor_aegis": {
+    "id": "armor_aegis",
+    "name": "Aegis Combat Rig",
+    "type": "armor",
+    "rarity": "legendary",
+    "value": 2500,
+    "weight": 4.5,
+    "armor_value": 100,
+    "sprite": "items/armor_aegis",
+    "stats": {
+      "armor": 100,
+      "mobility_penalty": 0
+    }
+  },
+  "medkit_basic": {
+    "id": "medkit_basic",
+    "name": "Basic Med Kit",
+    "type": "consumable",
+    "rarity": "common",
+    "value": 50,
+    "weight": 0.5,
+    "sprite": "items/medkit_basic",
+    "stats": {
+      "heal_amount": 30,
+      "use_time": 2.0
+    }
+  },
+  "medkit_field": {
+    "id": "medkit_field",
+    "name": "Field Trauma Kit",
+    "type": "consumable",
+    "rarity": "uncommon",
+    "value": 220,
+    "weight": 0.8,
+    "sprite": "items/medkit_field",
+    "stats": {
+      "heal_amount": 70,
+      "use_time": 3.0
+    }
+  },
+  "stim_combat": {
+    "id": "stim_combat",
+    "name": "Combat Stimulant",
+    "type": "consumable",
+    "rarity": "rare",
+    "value": 450,
+    "weight": 0.3,
+    "sprite": "items/stim_combat",
+    "stats": {
+      "speed_bonus": 25,
+      "duration": 10.0,
+      "use_time": 1.0
+    }
+  },
+  "injector_nano": {
+    "id": "injector_nano",
+    "name": "Nano Injector",
+    "type": "consumable",
+    "rarity": "epic",
+    "value": 900,
+    "weight": 0.3,
+    "sprite": "items/injector_nano",
+    "stats": {
+      "heal_amount": 100,
+      "regen_rate": 5,
+      "duration": 8.0,
+      "use_time": 1.5
+    }
+  },
+  "scope_red_dot": {
+    "id": "scope_red_dot",
+    "name": "Red Dot Sight",
+    "type": "attachment",
+    "rarity": "common",
+    "value": 90,
+    "weight": 0.2,
+    "sprite": "items/scope_red_dot",
+    "stats": {
+      "accuracy_bonus": 10,
+      "compatible_types": ["weapon"]
+    }
+  },
+  "scope_holo": {
+    "id": "scope_holo",
+    "name": "Holographic Scope",
+    "type": "attachment",
+    "rarity": "uncommon",
+    "value": 320,
+    "weight": 0.3,
+    "sprite": "items/scope_holo",
+    "stats": {
+      "accuracy_bonus": 20,
+      "zoom": 1.5,
+      "compatible_types": ["weapon"]
+    }
+  },
+  "suppressor_mk1": {
+    "id": "suppressor_mk1",
+    "name": "Sound Suppressor",
+    "type": "attachment",
+    "rarity": "uncommon",
+    "value": 380,
+    "weight": 0.4,
+    "sprite": "items/suppressor_mk1",
+    "stats": {
+      "noise_reduction": 60,
+      "damage_penalty": 5,
+      "compatible_types": ["weapon"]
+    }
+  },
+  "grip_tactical": {
+    "id": "grip_tactical",
+    "name": "Tactical Foregrip",
+    "type": "attachment",
+    "rarity": "rare",
+    "value": 420,
+    "weight": 0.2,
+    "sprite": "items/grip_tactical",
+    "stats": {
+      "recoil_reduction": 25,
+      "compatible_types": ["weapon"]
+    }
+  },
+  "scope_thermal": {
+    "id": "scope_thermal",
+    "name": "Thermal Scope",
+    "type": "attachment",
+    "rarity": "epic",
+    "value": 1100,
+    "weight": 0.5,
+    "sprite": "items/scope_thermal",
+    "stats": {
+      "accuracy_bonus": 35,
+      "zoom": 3.0,
+      "wall_detect": true,
+      "compatible_types": ["weapon"]
+    }
+  },
+  "medkit_small": {
+    "id": "medkit_small",
+    "name": "Small Med Kit",
+    "type": "consumable",
+    "rarity": "common",
+    "value": 50,
+    "weight": 0.3,
+    "consumable_type": "heal",
+    "heal_amount": 30,
+    "sprite": "items/medkit_small",
+    "stats": {
+      "heal_amount": 30,
+      "use_time": 1.5
+    }
+  },
+  "medkit_large": {
+    "id": "medkit_large",
+    "name": "Large Med Kit",
+    "type": "consumable",
+    "rarity": "uncommon",
+    "value": 220,
+    "weight": 0.6,
+    "consumable_type": "heal",
+    "heal_amount": 80,
+    "sprite": "items/medkit_large",
+    "stats": {
+      "heal_amount": 80,
+      "use_time": 2.5
+    }
+  },
+  "stim_speed": {
+    "id": "stim_speed",
+    "name": "Speed Stimulant",
+    "type": "consumable",
+    "rarity": "rare",
+    "value": 400,
+    "weight": 0.2,
+    "consumable_type": "buff",
+    "buff_type": "speed",
+    "buff_value": 30.0,
+    "buff_duration": 15.0,
+    "sprite": "items/stim_speed",
+    "stats": {
+      "use_time": 1.0
+    }
+  },
+  "stim_damage": {
+    "id": "stim_damage",
+    "name": "Damage Stimulant",
+    "type": "consumable",
+    "rarity": "rare",
+    "value": 450,
+    "weight": 0.2,
+    "consumable_type": "buff",
+    "buff_type": "damage",
+    "buff_value": 25.0,
+    "buff_duration": 12.0,
+    "sprite": "items/stim_damage",
+    "stats": {
+      "use_time": 1.0
+    }
+  },
+  "ammo_pistol": {
+    "id": "ammo_pistol",
+    "name": "Pistol Ammo",
+    "type": "consumable",
+    "rarity": "common",
+    "value": 50,
+    "weight": 0.1,
+    "sprite": "items/ammo_pistol",
+    "stats": {
+      "ammo_count": 12
+    }
+  },
+  "ammo_rifle": {
+    "id": "ammo_rifle",
+    "name": "Rifle Ammo",
+    "type": "consumable",
+    "rarity": "common",
+    "value": 55,
+    "weight": 0.2,
+    "sprite": "items/ammo_rifle",
+    "stats": {
+      "ammo_count": 20
+    }
+  },
+  "ammo_sniper": {
+    "id": "ammo_sniper",
+    "name": "Sniper Ammo",
+    "type": "consumable",
+    "rarity": "common",
+    "value": 60,
+    "weight": 0.2,
+    "sprite": "items/ammo_sniper",
+    "stats": {
+      "ammo_count": 5
+    }
+  },
+  "weapon_pistol": {
+    "id": "weapon_pistol",
+    "name": "Standard Pistol",
+    "type": "weapon",
+    "rarity": "common",
+    "value": 80,
+    "weight": 1.0,
+    "sprite": "items/weapon_pistol",
+    "stats": {
+      "damage": 15,
+      "fire_rate": 3.0,
+      "magazine": 12,
+      "reload_time": 1.5,
+      "range": 300
+    }
+  },
+  "weapon_rifle": {
+    "id": "weapon_rifle",
+    "name": "Standard Rifle",
+    "type": "weapon",
+    "rarity": "uncommon",
+    "value": 250,
+    "weight": 3.0,
+    "sprite": "items/weapon_rifle",
+    "stats": {
+      "damage": 30,
+      "fire_rate": 4.0,
+      "magazine": 20,
+      "reload_time": 2.0,
+      "range": 450
+    }
+  },
+  "weapon_sniper": {
+    "id": "weapon_sniper",
+    "name": "Standard Sniper",
+    "type": "weapon",
+    "rarity": "uncommon",
+    "value": 350,
+    "weight": 4.0,
+    "sprite": "items/weapon_sniper",
+    "stats": {
+      "damage": 100,
+      "fire_rate": 0.8,
+      "magazine": 5,
+      "reload_time": 3.0,
+      "range": 800
+    }
+  }
 }

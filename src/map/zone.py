@@ -1,18 +1,43 @@
-import pygame
-from typing import List, Tuple, Optional, Dict, Any
+"""Zone model -- a named rectangular region of the game map."""
+from __future__ import annotations
 
+from dataclasses import dataclass, field
+from typing import List, Optional, Tuple
+
+import pygame
+
+
+@dataclass
 class Zone:
-    def __init__(self, name: str, rect: pygame.Rect,
-                 spawn_points: Optional[List[Tuple[float, float]]] = None,
-                 music_track: Optional[str] = None):
-        self.name: str = name
-        self.rect: pygame.Rect = rect
-        self.spawn_points: List[Tuple[float, float]] = spawn_points or []
-        self.music_track: Optional[str] = music_track
-        self.enemy_spawns: List[Dict[str, Any]] = []
+    """A rectangular region that triggers music and houses spawn points.
+
+    Attributes:
+        name:          Human-readable zone identifier.
+        rect:          Bounding box -- either a pygame.Rect or (x, y, w, h) tuple.
+        spawn_points:  List of (x, y) positions.
+        music_track:   Path to the OGG file to loop, or None.
+        enemy_spawns:  List of {"type": str, "pos": [x, y]} dicts.
+    """
+
+    name: str
+    rect: "pygame.Rect | Tuple[int, int, int, int]"
+    spawn_points: Optional[List[Tuple[float, float]]] = field(default_factory=list)
+    music_track: Optional[str] = None
+    enemy_spawns: Optional[List[dict]] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if self.spawn_points is None:
+            self.spawn_points = []
+        if self.enemy_spawns is None:
+            self.enemy_spawns = []
 
     def contains(self, pos: Tuple[float, float]) -> bool:
-        return self.rect.collidepoint(int(pos[0]), int(pos[1]))
+        """Return True if *pos* falls within the zone's bounding rectangle."""
+        if isinstance(self.rect, pygame.Rect):
+            return self.rect.collidepoint(int(pos[0]), int(pos[1]))
+        x, y, w, h = self.rect
+        px, py = pos
+        return x <= px < x + w and y <= py < y + h
 
     def __repr__(self) -> str:
         return f"Zone({self.name!r}, {self.rect})"

@@ -1,26 +1,63 @@
-import pygame
-from typing import List, Any
+"""
+CombatSystem -- resolves projectile-vs-entity collisions and emits events.
+"""
+from __future__ import annotations
+
+from typing import Any, List
+
+import src.constants as consts
+
 
 class CombatSystem:
-    def update(self, projectiles: List[Any], entities: List[Any], dt: float) -> None:
+    """Checks projectile collisions each frame and handles hit resolution."""
+
+    def __init__(self, event_bus: Any = None) -> None:
+        self._event_bus = event_bus
+
+    def update(self, projectiles: list, targets: list, dt: float) -> None:
+        """Process all projectile/target pairs for the current frame."""
         for proj in list(projectiles):
             if not proj.alive:
                 continue
-            for entity in entities:
-                if not getattr(entity, 'alive', True):
+            for target in targets:
+                if not getattr(target, 'alive', True):
                     continue
-                if entity is proj.owner:
+                if proj.owner is target:
                     continue
-                if proj.rect.colliderect(entity.rect):
-                    if hasattr(entity, 'take_damage'):
-                        if hasattr(entity, 'get_effective_armor'):
-                            armor = entity.get_effective_armor()
-                            damage = max(1, proj.damage - armor)
-                        else:
-                            damage = proj.damage
-                        entity.take_damage(damage)
-                    proj.alive = False
-                    break
+                if not proj.rect.colliderect(target.rect):
+                    continue
+
+                # Friendly-fire gate: only applies to PvP (Player <-> PlayerAgent)
+                try:
+                    from src.entities.player import Player
+                    from src.entities.player_agent import PlayerAgent
+                    if isinstance(proj.owner, (Player, PlayerAgent)) and isinstance(
+                        target, (Player, PlayerAgent)
+                    ):
+                        if not consts.PVP_FRIENDLY_FIRE:
+                            continue
+                except ImportError:
+                    pass
+
+                # Compute effective damage (armor-aware)
+                raw_damage = proj.damage
+                if hasattr(target, 'get_effective_armor'):
+                    armor = target.get_effective_armor()
+                    effective = max(1, raw_damage - int(armor))
+                else:
+                    effective = raw_damage
+
+                # Apply hit
+                if hasattr(target, 'take_damage'):
+                    target.take_damage(effective)
+                proj.alive = False
+
+                if not getattr(target, 'alive', True):
+                    if self._event_bus is not None:
+                        self._event_bus.emit(
+                            "player_killed", killer=proj.owner, victim=target
+                        )
+                break  # projectile consumed
 
     def fire(self, owner: Any, target_x: float, target_y: float,
              damage: int = 15, speed: float = 600.0) -> Any:

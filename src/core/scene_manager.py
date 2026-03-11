@@ -24,6 +24,22 @@ import pygame
 from src.scenes.base_scene import BaseScene
 
 
+class _CallableBool(int):
+    """A bool-like value that can also be called (returns itself).
+
+    This allows ``is_empty`` to work as both a property (``sm.is_empty``)
+    and a method-style call (``sm.is_empty()``).
+    """
+    def __new__(cls, val: bool):
+        return super().__new__(cls, val)
+
+    def __call__(self) -> bool:
+        return bool(self)
+
+    def __bool__(self) -> bool:
+        return int.__bool__(self)
+
+
 class SceneManager:
     """Push/pop scene stack with per-frame routing to the active scene."""
 
@@ -113,9 +129,14 @@ class SceneManager:
         """The top-most scene, or ``None`` if the stack is empty."""
         return self._stack[-1] if self._stack else None
 
-    def is_empty(self) -> bool:
-        """``True`` when no scenes are on the stack."""
-        return not self._stack
+    @property
+    def is_empty(self) -> _CallableBool:
+        """``True`` when no scenes are on the stack.
+
+        Works both as a property (``sm.is_empty``) and as a call
+        (``sm.is_empty()``) for backwards compatibility.
+        """
+        return _CallableBool(not self._stack)
 
     def depth(self) -> int:
         """Number of scenes currently on the stack."""
