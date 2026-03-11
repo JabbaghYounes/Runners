@@ -1,3 +1,5 @@
+[![Built with Ricky](https://img.shields.io/badge/Built%20with-Ricky-ff6b35?style=for-the-badge&logo=dependabot&logoColor=white)](https://github.com/JabbaghYounes/Ricky)
+
 Runners
 
 Runners is a futuristic PvPvE extraction shooter built with Python and Pygame, inspired by the classic Marathon game by Bungie. Players explore a hostile map, complete challenges, loot enemies, and extract before the round ends to upgrade their characters and home base.
