@@ -1,0 +1,7 @@
+{
+  "volume_master": 1.0,
+  "volume_music": 0.7,
+  "volume_sfx": 1.0,
+  "resolution": [1280, 720],
+  "fps": 60
+}
