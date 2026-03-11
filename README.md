@@ -2,25 +2,19 @@ Runners
 
 Runners is a futuristic PvPvE extraction shooter built with Python and Pygame, inspired by the classic Marathon game by Bungie. Players explore a hostile map, complete challenges, loot enemies, and extract before the round ends to upgrade their characters and home base.
 
-🎯 Features
+Features
 
 Competitive PvP & PvE gameplay
-
 Futuristic retro art style
-
 15-minute extraction rounds
-
 Loot collection and inventory management
-
 Skill tree progression and home base upgrades
-
 Single playable map (expandable in future updates)
-
 AI-controlled humanoid robot enemies
-
 Weapon attachments, armor, and consumables
 
-🕹 Controls
+Controls
+
 Action	Key
 Move	WASD
 Crouch	Ctrl
@@ -31,7 +25,8 @@ Pick up items/weapons	E
 Open map	M
 Open inventory	Tab
 Aim / Shoot	Mouse
-🛠 Installation
+
+Installation
 
 Clone the repository:
 
@@ -48,7 +43,9 @@ python main.py
 
 Requirements: Python 3.10+, Pygame 2.x
 
-📂 Project Structure
+
+Project Structure
+
 runners/
 ├─ assets/          # Sprites, sound effects, music
 ├─ src/             # Game source code
@@ -59,7 +56,9 @@ runners/
 │  └─ main.py
 ├─ README.md
 └─ requirements.txt
-🎨 Art & Audio
+
+
+Art & Audio
 
 Futuristic retro pixel art
 
@@ -67,7 +66,8 @@ Looped background music per map zone
 
 Sound effects for shooting, enemy attacks, loot collection
 
-🚀 Development Roadmap
+
+Development Roadmap
 
 Prototype player movement & shooting
 
@@ -81,7 +81,8 @@ Expand map & zones
 
 Polish UI/UX, audio, and performance
 
-🤝 Contributing
+
+Contributing
 
 Fork the repository
 
@@ -93,12 +94,13 @@ Push to the branch: git push origin feature/my-feature
 
 Open a pull request
 
-📄 License
+
+License
 
 This project is licensed under the MIT License – see the LICENSE
  file for details.
 
-⚡ Future Plans
+Future Plans
 
 Multiple maps & zones
 
