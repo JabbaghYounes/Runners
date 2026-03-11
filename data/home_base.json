@@ -1,0 +1,180 @@
+{
+  "facilities": [
+    {
+      "id": "armory",
+      "name": "Armory",
+      "description": "Weapon maintenance and storage. Upgrades increase starting weapon damage.",
+      "icon": "ui/facility_armory",
+      "max_level": 5,
+      "levels": [
+        {
+          "level": 1,
+          "cost": 300,
+          "bonus_type": "weapon_damage_percent",
+          "bonus_value": 5,
+          "description": "+5% weapon damage"
+        },
+        {
+          "level": 2,
+          "cost": 600,
+          "bonus_type": "weapon_damage_percent",
+          "bonus_value": 10,
+          "description": "+10% weapon damage"
+        },
+        {
+          "level": 3,
+          "cost": 1000,
+          "bonus_type": "weapon_damage_percent",
+          "bonus_value": 16,
+          "description": "+16% weapon damage"
+        },
+        {
+          "level": 4,
+          "cost": 1600,
+          "bonus_type": "weapon_damage_percent",
+          "bonus_value": 23,
+          "description": "+23% weapon damage"
+        },
+        {
+          "level": 5,
+          "cost": 2500,
+          "bonus_type": "weapon_damage_percent",
+          "bonus_value": 30,
+          "description": "+30% weapon damage"
+        }
+      ]
+    },
+    {
+      "id": "med_bay",
+      "name": "Med Bay",
+      "description": "Medical facilities. Upgrades increase starting health and healing effectiveness.",
+      "icon": "ui/facility_med_bay",
+      "max_level": 5,
+      "levels": [
+        {
+          "level": 1,
+          "cost": 250,
+          "bonus_type": "starting_health_bonus",
+          "bonus_value": 20,
+          "description": "+20 starting health"
+        },
+        {
+          "level": 2,
+          "cost": 500,
+          "bonus_type": "starting_health_bonus",
+          "bonus_value": 45,
+          "description": "+45 starting health"
+        },
+        {
+          "level": 3,
+          "cost": 900,
+          "bonus_type": "starting_health_bonus",
+          "bonus_value": 75,
+          "description": "+75 starting health"
+        },
+        {
+          "level": 4,
+          "cost": 1400,
+          "bonus_type": "starting_health_bonus",
+          "bonus_value": 110,
+          "description": "+110 starting health"
+        },
+        {
+          "level": 5,
+          "cost": 2200,
+          "bonus_type": "starting_health_bonus",
+          "bonus_value": 150,
+          "description": "+150 starting health"
+        }
+      ]
+    },
+    {
+      "id": "storage",
+      "name": "Storage",
+      "description": "Expanded logistics. Upgrades increase inventory capacity and carry weight.",
+      "icon": "ui/facility_storage",
+      "max_level": 5,
+      "levels": [
+        {
+          "level": 1,
+          "cost": 200,
+          "bonus_type": "inventory_slots_bonus",
+          "bonus_value": 2,
+          "description": "+2 inventory slots"
+        },
+        {
+          "level": 2,
+          "cost": 450,
+          "bonus_type": "inventory_slots_bonus",
+          "bonus_value": 4,
+          "description": "+4 inventory slots"
+        },
+        {
+          "level": 3,
+          "cost": 800,
+          "bonus_type": "inventory_slots_bonus",
+          "bonus_value": 7,
+          "description": "+7 inventory slots"
+        },
+        {
+          "level": 4,
+          "cost": 1300,
+          "bonus_type": "inventory_slots_bonus",
+          "bonus_value": 10,
+          "description": "+10 inventory slots"
+        },
+        {
+          "level": 5,
+          "cost": 2000,
+          "bonus_type": "inventory_slots_bonus",
+          "bonus_value": 14,
+          "description": "+14 inventory slots"
+        }
+      ]
+    },
+    {
+      "id": "comms",
+      "name": "Comms",
+      "description": "Intelligence network. Upgrades reveal enemy positions and increase XP gain.",
+      "icon": "ui/facility_comms",
+      "max_level": 5,
+      "levels": [
+        {
+          "level": 1,
+          "cost": 350,
+          "bonus_type": "xp_gain_percent",
+          "bonus_value": 10,
+          "description": "+10% XP gain"
+        },
+        {
+          "level": 2,
+          "cost": 700,
+          "bonus_type": "xp_gain_percent",
+          "bonus_value": 20,
+          "description": "+20% XP gain"
+        },
+        {
+          "level": 3,
+          "cost": 1100,
+          "bonus_type": "xp_gain_percent",
+          "bonus_value": 32,
+          "description": "+32% XP gain"
+        },
+        {
+          "level": 4,
+          "cost": 1800,
+          "bonus_type": "xp_gain_percent",
+          "bonus_value": 45,
+          "description": "+45% XP gain"
+        },
+        {
+          "level": 5,
+          "cost": 2800,
+          "bonus_type": "xp_gain_percent",
+          "bonus_value": 60,
+          "description": "+60% XP gain"
+        }
+      ]
+    }
+  ]
+}
