@@ -1,0 +1,20 @@
+{
+  "resolution": [1280, 720],
+  "fullscreen": false,
+  "target_fps": 60,
+  "music_volume": 0.7,
+  "sfx_volume": 1.0,
+  "master_volume": 1.0,
+  "key_bindings": {
+    "move_left": "a",
+    "move_right": "d",
+    "jump": "space",
+    "crouch": "s",
+    "shoot": "mouse1",
+    "reload": "r",
+    "interact": "e",
+    "inventory": "tab",
+    "map": "m",
+    "pause": "escape"
+  }
+}

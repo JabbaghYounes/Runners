@@ -1,0 +1,4 @@
+{
+  "_comment": "Item catalog. Each entry defines one item type. Schema: id, name, type (weapon|armor|consumable|attachment), rarity, stats{}, sprite.",
+  "items": []
+}

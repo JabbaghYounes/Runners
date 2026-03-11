@@ -1,0 +1,113 @@
+"""Compile-time constants.
+
+These values are baked in at import time and never read from settings.json.
+Runtime user preferences (volume, resolution overrides, key bindings) live in
+src/core/settings.py and are loaded from settings.json.
+"""
+
+import pygame  # pygame constants are plain integers — safe to import before init()
+
+# ── Display ───────────────────────────────────────────────────────────────────
+DEFAULT_WIDTH  = 1280
+DEFAULT_HEIGHT = 720
+DEFAULT_FPS    = 60
+
+# Fixed-timestep constants
+FIXED_TIMESTEP = 1.0 / DEFAULT_FPS  # seconds per physics/logic tick  (~16.67 ms)
+MAX_FRAME_TIME = 0.25               # spiral-of-death cap: ignore time past 250 ms
+
+# ── Tile grid ─────────────────────────────────────────────────────────────────
+TILE_SIZE = 32  # pixels
+
+# ── Physics ───────────────────────────────────────────────────────────────────
+GRAVITY         =  980.0   # px/s²  (downward)
+PLAYER_SPEED    =  200.0   # px/s   horizontal walk speed
+PLAYER_JUMP_VEL = -500.0   # px/s   upward velocity on jump (negative = up)
+
+# ── Round ─────────────────────────────────────────────────────────────────────
+ROUND_DURATION_SECS = 15 * 60  # 15-minute extraction window
+
+# ── Render layers (Z-order) ───────────────────────────────────────────────────
+LAYER_TILES       = 0
+LAYER_LOOT        = 1
+LAYER_ENEMIES     = 2
+LAYER_PLAYER      = 3
+LAYER_PROJECTILES = 4
+LAYER_HUD         = 5
+
+# ── Colour palette — neon retro theme ─────────────────────────────────────────
+BLACK        = (  0,   0,   0)
+WHITE        = (255, 255, 255)
+DARK_BG      = ( 13,  17,  23)   # #0D1117  deep background
+PANEL_BG     = ( 22,  27,  34)   # #16181A  panel / card surface
+NEON_CYAN    = (  0, 255, 255)   # primary accent
+NEON_GREEN   = ( 57, 255,  20)   # selection / active highlight
+NEON_ORANGE  = (255, 165,   0)   # warning / timer
+NEON_RED     = (255,  50,  50)   # damage / danger
+TEXT_PRIMARY = (220, 230, 240)   # readable body text
+TEXT_DIM     = (100, 110, 120)   # disabled / secondary text
+
+# ── Rarity colours ────────────────────────────────────────────────────────────
+RARITY_COLORS: dict[str, tuple[int, int, int]] = {
+    "common":    (180, 180, 180),
+    "uncommon":  ( 30, 200,  30),
+    "rare":      ( 30,  80, 220),
+    "epic":      (128,   0, 220),
+    "legendary": (255, 165,   0),
+}
+
+# ── Short-form aliases ────────────────────────────────────────────────────────
+# Every scene, system, and UI module should use these names.  The verbose
+# canonical names above document intent; these keep call-site code concise.
+
+SCREEN_W = DEFAULT_WIDTH
+SCREEN_H = DEFAULT_HEIGHT
+FPS      = DEFAULT_FPS
+
+BG_DEEP        = DARK_BG
+BG_MID         = ( 15,  22,  38)    # slightly lighter mid-tone for layering
+
+ACCENT_CYAN    = NEON_CYAN
+ACCENT_GREEN   = NEON_GREEN
+ACCENT_ORANGE  = NEON_ORANGE
+ACCENT_RED     = NEON_RED
+ACCENT_MAGENTA = (255,   0, 180)    # secondary accent / special alerts
+
+BORDER_DIM     = ( 40,  60,  80)
+BORDER_BRIGHT  = ( 80, 120, 160)
+
+TEXT_BRIGHT    = TEXT_PRIMARY
+TEXT_SECONDARY = TEXT_DIM
+
+HEALTH_COLOR = ( 80, 255,  80)
+ARMOR_COLOR  = ( 80, 160, 255)
+XP_COLOR     = (160,  80, 255)
+
+# ── Extended physics constants ────────────────────────────────────────────────
+WALK_SPEED     = 180.0
+SPRINT_SPEED   = 300.0
+CROUCH_SPEED   =  90.0
+JUMP_VEL       = -550.0   # px/s upward (negative = up)
+SLIDE_VEL      =  400.0
+ACCEL          = 1200.0   # px/s² acceleration toward target_vx
+DECEL          = 1500.0   # px/s² deceleration when no directional input
+SLIDE_DECEL    =  600.0
+SLIDE_DURATION =    0.38  # seconds a slide lasts
+
+NORMAL_HEIGHT = 48   # pixels — standing player hitbox height
+CROUCH_HEIGHT = 24   # pixels — crouching / sliding hitbox height
+
+PICKUP_RADIUS = 48   # pixels — loot interaction distance
+
+# ── Default key bindings (fallback when settings.json is missing a binding) ───
+DEFAULT_KEYS: dict[str, int] = {
+    "move_left":  pygame.K_a,
+    "move_right": pygame.K_d,
+    "jump":       pygame.K_SPACE,
+    "crouch":     pygame.K_s,
+    "reload":     pygame.K_r,
+    "interact":   pygame.K_e,
+    "inventory":  pygame.K_TAB,
+    "map":        pygame.K_m,
+    "pause":      pygame.K_ESCAPE,
+}
