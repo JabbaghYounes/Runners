@@ -1,0 +1,4 @@
+{
+  "_comment": "Home base facility definitions. Schema: id, name, max_level, levels[]{cost, bonus_type, bonus_value}.",
+  "facilities": []
+}

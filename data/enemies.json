@@ -1,0 +1,4 @@
+{
+  "_comment": "Enemy type definitions. Schema: id, name, hp, speed, aggro_range, damage, loot_table[], sprite.",
+  "enemies": []
+}

@@ -1,0 +1,4 @@
+{
+  "_comment": "Skill tree node graph. Schema: id, branch, cost_xp, cost_money, prerequisites[], stat_bonuses{}.",
+  "nodes": []
+}

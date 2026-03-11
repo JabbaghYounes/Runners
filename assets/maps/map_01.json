@@ -1,0 +1,16 @@
+{
+  "_comment": "Tile layers, zone definitions, spawn points, extraction zone, and loot spawn points for map 01.",
+  "width": 40,
+  "height": 23,
+  "tile_size": 32,
+  "layers": [
+    {
+      "name": "ground",
+      "tiles": []
+    }
+  ],
+  "zones": [],
+  "spawn_points": [],
+  "extraction_zone": { "x": 0, "y": 0, "width": 96, "height": 96 },
+  "loot_spawns": []
+}
