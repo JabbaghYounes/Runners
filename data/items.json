@@ -1,0 +1,56 @@
+{
+  "items": {
+    "medkit_small": {
+      "id": "medkit_small",
+      "name": "Small Medkit",
+      "type": "consumable",
+      "consumable_type": "heal",
+      "rarity": "common",
+      "sprite_key": "medkit_small",
+      "value": 50,
+      "heal_amount": 30,
+      "buff_type": null,
+      "buff_value": 0,
+      "buff_duration": 0
+    },
+    "medkit_large": {
+      "id": "medkit_large",
+      "name": "Large Medkit",
+      "type": "consumable",
+      "consumable_type": "heal",
+      "rarity": "uncommon",
+      "sprite_key": "medkit_large",
+      "value": 120,
+      "heal_amount": 80,
+      "buff_type": null,
+      "buff_value": 0,
+      "buff_duration": 0
+    },
+    "stim_speed": {
+      "id": "stim_speed",
+      "name": "Speed Stim",
+      "type": "consumable",
+      "consumable_type": "buff",
+      "rarity": "uncommon",
+      "sprite_key": "stim_speed",
+      "value": 200,
+      "heal_amount": 0,
+      "buff_type": "speed",
+      "buff_value": 30,
+      "buff_duration": 15.0
+    },
+    "stim_damage": {
+      "id": "stim_damage",
+      "name": "Damage Stim",
+      "type": "consumable",
+      "consumable_type": "buff",
+      "rarity": "rare",
+      "sprite_key": "stim_damage",
+      "value": 350,
+      "heal_amount": 0,
+      "buff_type": "damage",
+      "buff_value": 25,
+      "buff_duration": 12.0
+    }
+  }
+}
