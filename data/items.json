@@ -1,0 +1,74 @@
+{
+  "pistol_01": {
+    "name": "Plasma Pistol",
+    "type": "weapon",
+    "rarity": "common",
+    "weight": 1.5,
+    "value": 200,
+    "stats": {"damage": 15, "fire_rate": 3.0, "range": 400, "ammo_type": "pistol"}
+  },
+  "rifle_01": {
+    "name": "Rail Rifle",
+    "type": "weapon",
+    "rarity": "uncommon",
+    "weight": 3.0,
+    "value": 600,
+    "stats": {"damage": 30, "fire_rate": 1.5, "range": 700, "ammo_type": "rifle"}
+  },
+  "medkit_small": {
+    "name": "Small Medkit",
+    "type": "consumable",
+    "rarity": "common",
+    "weight": 0.5,
+    "value": 50,
+    "stats": {"heal_amount": 25}
+  },
+  "medkit_large": {
+    "name": "Large Medkit",
+    "type": "consumable",
+    "rarity": "uncommon",
+    "weight": 1.0,
+    "value": 150,
+    "stats": {"heal_amount": 60}
+  },
+  "stim_speed": {
+    "name": "Speed Stim",
+    "type": "consumable",
+    "rarity": "uncommon",
+    "weight": 0.3,
+    "value": 100,
+    "stats": {"buff": "speed_boost", "duration": 10.0, "multiplier": 1.5}
+  },
+  "armor_light": {
+    "name": "Light Armor Vest",
+    "type": "armor",
+    "rarity": "common",
+    "weight": 2.0,
+    "value": 300,
+    "stats": {"armor_bonus": 30}
+  },
+  "light_vest": {
+    "name": "Light Vest",
+    "type": "armor",
+    "rarity": "common",
+    "weight": 2.0,
+    "value": 300,
+    "armor_value": 5
+  },
+  "tac_vest": {
+    "name": "Tactical Vest",
+    "type": "armor",
+    "rarity": "uncommon",
+    "weight": 3.5,
+    "value": 600,
+    "armor_value": 12
+  },
+  "ballistic_plate": {
+    "name": "Ballistic Plate",
+    "type": "armor",
+    "rarity": "rare",
+    "weight": 6.0,
+    "value": 1200,
+    "armor_value": 22
+  }
+}

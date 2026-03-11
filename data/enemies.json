@@ -1,0 +1,27 @@
+{
+  "grunt": {
+    "hp": 60,
+    "speed": 80,
+    "aggro_range": 200,
+    "attack_range": 60,
+    "damage": 10,
+    "xp_reward": 50,
+    "loot_table": [
+      {"item_id": "medkit_small", "weight": 30},
+      {"item_id": "pistol_01", "weight": 10}
+    ]
+  },
+  "elite": {
+    "hp": 120,
+    "speed": 60,
+    "aggro_range": 300,
+    "attack_range": 80,
+    "damage": 20,
+    "xp_reward": 120,
+    "loot_table": [
+      {"item_id": "medkit_large", "weight": 40},
+      {"item_id": "rifle_01", "weight": 20},
+      {"item_id": "armor_light", "weight": 15}
+    ]
+  }
+}
