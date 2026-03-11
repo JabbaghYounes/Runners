@@ -1,0 +1,10 @@
+{
+  "nodes": [
+    {"id": "combat_01", "name": "Sharp Shooter", "branch": "combat", "cost": 1, "stat_bonus": {"damage_mult": 0.1}, "requires": []},
+    {"id": "combat_02", "name": "Rapid Fire", "branch": "combat", "cost": 2, "stat_bonus": {"fire_rate_mult": 0.15}, "requires": ["combat_01"]},
+    {"id": "survival_01", "name": "Iron Will", "branch": "survival", "cost": 1, "stat_bonus": {"max_hp_bonus": 20}, "requires": []},
+    {"id": "survival_02", "name": "Armor Up", "branch": "survival", "cost": 2, "stat_bonus": {"max_armor_bonus": 20}, "requires": ["survival_01"]},
+    {"id": "mobility_01", "name": "Sprinter", "branch": "mobility", "cost": 1, "stat_bonus": {"speed_mult": 0.1}, "requires": []},
+    {"id": "mobility_02", "name": "Parkour", "branch": "mobility", "cost": 2, "stat_bonus": {"jump_mult": 0.15}, "requires": ["mobility_01"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "facilities": [
+    {"id": "armory", "name": "Armory", "level": 0, "max_level": 3, "upgrade_cost": [500, 1500, 4000], "bonus_per_level": {"damage_mult": 0.05}},
+    {"id": "med_bay", "name": "Med Bay", "level": 0, "max_level": 3, "upgrade_cost": [400, 1200, 3000], "bonus_per_level": {"max_hp_bonus": 10}},
+    {"id": "research_lab", "name": "Research Lab", "level": 0, "max_level": 3, "upgrade_cost": [600, 2000, 5000], "bonus_per_level": {"xp_mult": 0.1}}
+  ]
+}
