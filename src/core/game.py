@@ -38,11 +38,11 @@ class GameApp:
     """Top-level application.  Create one instance, then call ``.run()``."""
 
     def __init__(self) -> None:
+        # ── Pygame subsystems (must init before loading settings/key bindings) ─
+        pygame.init()
+
         # ── Load user settings (resolution, fps, volume, key bindings) ────────
         self.settings: Settings = Settings.load()
-
-        # ── Pygame subsystems ─────────────────────────────────────────────────
-        pygame.init()
         self._init_display()
         self._audio_ok = self._init_audio()
         pygame.display.set_caption("Runners")

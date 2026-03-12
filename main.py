@@ -21,6 +21,9 @@ from __future__ import annotations
 import os
 import sys
 
+# Force SDL to skip OpenGL if the driver is unavailable (prevents GLX errors).
+os.environ.setdefault("SDL_RENDER_DRIVER", "software")
+
 # Ensure the project root is on sys.path so ``import src.xxx`` works regardless
 # of the current working directory.
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
