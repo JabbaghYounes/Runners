@@ -2,8 +2,6 @@
   <img src="assets/logo.png" alt="Runners" width="300" />
 </p>
 
-<h1 align="center">Runners</h1>
-
 <p align="center">
   A futuristic PvPvE extraction shooter built with Python and Pygame, inspired by the classic Marathon game by Bungie. Explore a hostile map, complete challenges, loot enemies, and extract before the round ends to upgrade your character and home base.
 </p>
