@@ -38,6 +38,7 @@ class GameScene(BaseScene):
         *,
         audio: Any = None,
         zones: "list | None" = None,
+        skill_tree: Any = None,
     ):
         self._sm = sm
         self._settings = settings or Settings()
@@ -46,6 +47,7 @@ class GameScene(BaseScene):
         self._xp_system = xp_system
         self._currency = currency
         self._home_base = home_base
+        self._skill_tree = skill_tree
         self._audio = audio
 
         # Input state
@@ -202,6 +204,10 @@ class GameScene(BaseScene):
         if self._home_base is not None:
             self._apply_home_base_bonuses(self.player, self._home_base)
 
+        # Apply skill tree bonuses
+        if self._skill_tree is not None:
+            self._apply_skill_tree_bonuses(self.player, self._skill_tree)
+
         # Subscribe events
         self._event_bus.subscribe('enemy_killed', self._on_enemy_killed)
         self._event_bus.subscribe('extraction_success', self._on_extract)
@@ -235,6 +241,10 @@ class GameScene(BaseScene):
         # Apply home base bonuses in stub mode too
         if self._home_base is not None:
             self._apply_home_base_bonuses(self.player, self._home_base)
+
+        # Apply skill tree bonuses in stub mode too
+        if self._skill_tree is not None:
+            self._apply_skill_tree_bonuses(self.player, self._skill_tree)
 
     # ------------------------------------------------------------------
     # _apply_home_base_bonuses — tested as an unbound method call
@@ -290,6 +300,44 @@ class GameScene(BaseScene):
             except (TypeError, ValueError):
                 pass
         self.loot_value_bonus = loot_bonus
+
+    # ------------------------------------------------------------------
+    # _apply_skill_tree_bonuses — apply stat bonuses from the skill tree
+    # ------------------------------------------------------------------
+
+    def _apply_skill_tree_bonuses(self, player, skill_tree) -> None:
+        """Apply stat bonuses from unlocked skill tree nodes to the player."""
+        if skill_tree is None:
+            return
+
+        bonuses = {}
+        if hasattr(skill_tree, "get_stat_bonuses"):
+            result = skill_tree.get_stat_bonuses()
+            if isinstance(result, dict):
+                bonuses = result
+
+        # extra_hp -- add to both health and max_health
+        extra_hp = int(bonuses.get("extra_hp", 0))
+        if extra_hp > 0:
+            player.max_health += extra_hp
+            player.health += extra_hp
+
+        # extra_armor -- add to armor
+        extra_armor = int(bonuses.get("extra_armor", 0))
+        if extra_armor > 0:
+            player.armor = getattr(player, "armor", 0) + extra_armor
+
+        # speed_mult -- increase walk speed
+        speed_mult = float(bonuses.get("speed_mult", 0))
+        if speed_mult > 0:
+            base_speed = getattr(player, "walk_speed", None)
+            if base_speed is not None:
+                player.walk_speed = base_speed * (1.0 + speed_mult)
+
+        # damage_mult -- store on player for combat system to use
+        damage_mult = float(bonuses.get("damage_mult", 0))
+        if damage_mult > 0:
+            player.damage_mult = getattr(player, "damage_mult", 1.0) + damage_mult
 
     # ------------------------------------------------------------------
     # BaseScene interface

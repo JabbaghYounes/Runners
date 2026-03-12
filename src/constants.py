@@ -101,6 +101,27 @@ CROUCH_HEIGHT = 24   # pixels — crouching / sliding hitbox height
 
 PICKUP_RADIUS = 48   # pixels — loot interaction distance
 
+# ── XP constants ──────────────────────────────────────────────────────────
+EXTRACTION_XP: int = 200
+
+# ── Weapon defaults ──────────────────────────────────────────────────────
+PROJECTILE_SPEED   = 600.0   # px/s — default bullet speed
+PROJECTILE_TTL     = 2.0     # seconds — default bullet lifetime
+
+# Default weapon stats (used when no weapon is equipped)
+DEFAULT_WEAPON_STATS: dict[str, float] = {
+    "fire_rate": 5.0,          # rounds per second
+    "damage": 15.0,            # HP per hit
+    "magazine_size": 12.0,     # rounds before reload
+    "reload_time": 1.5,        # seconds to reload
+    "projectile_speed": 600.0, # px/s
+}
+
+# Crosshair rendering
+CROSSHAIR_SIZE   = 16   # pixels — half-length of each crosshair line
+CROSSHAIR_GAP    =  4   # pixels — gap around the centre dot
+CROSSHAIR_COLOR  = NEON_CYAN
+
 # ── PvP constants ──────────────────────────────────────────────────────────
 PVP_KILL_XP: int = 150
 PVP_AGENT_COUNT: int = 3

@@ -12,6 +12,8 @@ class XPSystem:
 
         if event_bus is not None:
             event_bus.subscribe("player_killed", self._on_player_killed)
+            event_bus.subscribe("enemy_killed", self._on_enemy_killed)
+            event_bus.subscribe("extraction_success", self._on_extraction_success)
 
     def _on_player_killed(self, **kwargs: Any) -> None:
         """Award PVP_KILL_XP when the killer is the human player."""
@@ -23,10 +25,25 @@ class XPSystem:
             from src.constants import PVP_KILL_XP
             self.award(PVP_KILL_XP)
 
+    def _on_enemy_killed(self, **kwargs: Any) -> None:
+        """Award XP based on the enemy's xp_reward when a PvE enemy is killed."""
+        xp = kwargs.get("xp_reward", 0)
+        if xp:
+            self.award(xp)
+
+    def _on_extraction_success(self, **kwargs: Any) -> None:
+        """Award bonus XP for a successful extraction."""
+        from src.constants import EXTRACTION_XP
+        self.award(EXTRACTION_XP)
+
     def award(self, amount: int) -> None:
         self._pending_xp += amount
         self.xp += amount
+        old_level = self.level
         self._recalculate_level()
+        if self.level > old_level and self._event_bus is not None:
+            self._event_bus.emit("level_up", level=self.level)
+            self._event_bus.emit("level.up", level=self.level)
 
     def _recalculate_level(self) -> None:
         while self.xp >= self.xp_to_next_level():

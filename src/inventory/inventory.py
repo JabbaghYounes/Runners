@@ -226,3 +226,42 @@ class Inventory:
 
     def __contains__(self, item) -> bool:
         return item in self._slots
+
+    # ------------------------------------------------------------------
+    # Serialisation
+    # ------------------------------------------------------------------
+
+    def to_save_list(self) -> list[dict]:
+        """Serialise all items in the inventory to a JSON-safe list of dicts."""
+        result: list[dict] = []
+        for item in self._slots:
+            if item is not None and hasattr(item, "to_save_dict"):
+                result.append(item.to_save_dict())
+        return result
+
+    def from_save_list(self, data: list[dict]) -> None:
+        """Restore inventory contents from a list of item dicts.
+
+        Existing items are cleared before loading.  Each dict is passed
+        through ``make_item()`` to reconstruct the correct Item subclass.
+        """
+        from src.inventory.item import make_item
+
+        self.clear()
+        for item_data in data:
+            if not isinstance(item_data, dict):
+                continue
+            try:
+                item = make_item(item_data)
+                # Bypass weight check for saved items -- they were valid when saved
+                for i, slot in enumerate(self._slots):
+                    if slot is None:
+                        self._slots[i] = item
+                        break
+                else:
+                    # Expand if all slots full (saved data may have had more slots)
+                    self._slots.append(item)
+                    self.capacity += 1
+            except (TypeError, KeyError, ValueError):
+                # Skip items that can't be reconstructed
+                continue

@@ -47,7 +47,8 @@ class SaveManager:
 
         Supports two calling conventions:
         1. save(state_dict) -- writes the dict directly
-        2. save(home_base, currency, xp_system, inventory=None) -- builds the dict
+        2. save(home_base, currency, xp_system, inventory=None,
+               skill_tree=None) -- builds the dict from live objects
         """
         if isinstance(state, dict):
             data = state
@@ -59,51 +60,24 @@ class SaveManager:
             )
             xp_system = kwargs.get("xp_system")
             inventory = kwargs.get("inventory")
-            # Try to build from objects
-            data = {
-                "version": SAVE_VERSION,
-                "player": {
-                    "level": getattr(xp_system, "level", 1) if xp_system else 1,
-                    "xp": getattr(xp_system, "xp", 0) if xp_system else 0,
-                    "money": getattr(currency, "balance", 0) if currency else 0,
-                },
-                "inventory": (
-                    inventory.to_save_list()
-                    if inventory is not None and hasattr(inventory, "to_save_list")
-                    else []
-                ),
-                "skill_tree": {"unlocked_nodes": []},
-                "home_base": (
-                    home_base.to_save_dict()
-                    if hasattr(home_base, "to_save_dict")
-                    else {"armory": 0, "med_bay": 0, "storage": 0, "comms": 0}
-                ),
-            }
-        elif "home_base" in kwargs:
-            # Calling convention: save(home_base=..., currency=..., xp_system=...)
-            home_base = kwargs["home_base"]
-            currency = kwargs.get("currency")
-            xp_system = kwargs.get("xp_system")
-            inventory = kwargs.get("inventory")
-            data = {
-                "version": SAVE_VERSION,
-                "player": {
-                    "level": getattr(xp_system, "level", 1) if xp_system else 1,
-                    "xp": getattr(xp_system, "xp", 0) if xp_system else 0,
-                    "money": getattr(currency, "balance", 0) if currency else 0,
-                },
-                "inventory": (
-                    inventory.to_save_list()
-                    if inventory is not None and hasattr(inventory, "to_save_list")
-                    else []
-                ),
-                "skill_tree": {"unlocked_nodes": []},
-                "home_base": (
-                    home_base.to_save_dict()
-                    if hasattr(home_base, "to_save_dict")
-                    else {"armory": 0, "med_bay": 0, "storage": 0, "comms": 0}
-                ),
-            }
+            skill_tree = kwargs.get("skill_tree")
+            data = self._build_state_dict(
+                home_base=home_base,
+                currency=currency,
+                xp_system=xp_system,
+                inventory=inventory,
+                skill_tree=skill_tree,
+            )
+        elif any(k in kwargs for k in ("home_base", "currency", "xp_system",
+                                         "inventory", "skill_tree")):
+            # Calling convention: save(home_base=..., currency=..., xp_system=..., ...)
+            data = self._build_state_dict(
+                home_base=kwargs.get("home_base"),
+                currency=kwargs.get("currency"),
+                xp_system=kwargs.get("xp_system"),
+                inventory=kwargs.get("inventory"),
+                skill_tree=kwargs.get("skill_tree"),
+            )
         else:
             data = self._new_game()
 
@@ -113,6 +87,91 @@ class SaveManager:
         with open(tmp_path, "w", encoding="utf-8") as fh:
             json.dump(data, fh, indent=2)
         tmp_path.replace(self._save_path)
+
+    # ------------------------------------------------------------------
+    # Build state dict from live game objects
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_state_dict(
+        *,
+        home_base: Any = None,
+        currency: Any = None,
+        xp_system: Any = None,
+        inventory: Any = None,
+        skill_tree: Any = None,
+    ) -> dict:
+        """Construct a save-file dict from live game objects."""
+        return {
+            "version": SAVE_VERSION,
+            "player": {
+                "level": getattr(xp_system, "level", 1) if xp_system else 1,
+                "xp": getattr(xp_system, "xp", 0) if xp_system else 0,
+                "money": getattr(currency, "balance", 0) if currency else 0,
+            },
+            "inventory": (
+                inventory.to_save_list()
+                if inventory is not None and hasattr(inventory, "to_save_list")
+                else []
+            ),
+            "skill_tree": (
+                {
+                    "unlocked_nodes": skill_tree.to_save_dict().get("unlocked", []),
+                    "unlocked": skill_tree.to_save_dict().get("unlocked", []),
+                }
+                if skill_tree is not None and hasattr(skill_tree, "to_save_dict")
+                else {"unlocked_nodes": [], "unlocked": []}
+            ),
+            "home_base": (
+                home_base.to_save_dict()
+                if home_base is not None and hasattr(home_base, "to_save_dict")
+                else {"armory": 0, "med_bay": 0, "storage": 0, "comms": 0}
+            ),
+        }
+
+    # ------------------------------------------------------------------
+    # Restore state into live game objects
+    # ------------------------------------------------------------------
+
+    def restore(
+        self,
+        *,
+        currency: Any = None,
+        xp_system: Any = None,
+        inventory: Any = None,
+        skill_tree: Any = None,
+        home_base: Any = None,
+    ) -> dict:
+        """Load the save file and push values into the supplied game objects.
+
+        Any object parameter that is ``None`` is simply skipped.  Returns
+        the raw state dict for callers that need additional fields.
+        """
+        state = self.load()
+
+        player = state.get("player", {})
+        if currency is not None:
+            currency.balance = player.get("money", 0)
+        if xp_system is not None:
+            xp_system.xp = player.get("xp", 0)
+            xp_system.level = player.get("level", 1)
+        if inventory is not None and hasattr(inventory, "from_save_list"):
+            inventory.from_save_list(state.get("inventory", []))
+        if skill_tree is not None:
+            if hasattr(skill_tree, "load_state"):
+                st_data = state.get("skill_tree", {})
+                # Normalise: the skill_tree.load_state() expects {"unlocked": [...]},
+                # while save file stores {"unlocked_nodes": [...]}.
+                skill_tree.load_state(
+                    {"unlocked": st_data.get("unlocked_nodes", st_data.get("unlocked", []))}
+                )
+        if home_base is not None:
+            if hasattr(home_base, "from_save_dict"):
+                home_base.from_save_dict(state.get("home_base", {}))
+            elif hasattr(home_base, "load_state"):
+                home_base.load_state(state.get("home_base", {}))
+
+        return state
 
     def _new_game(self) -> dict:
         """Return the canonical zero-state for a brand-new player."""

@@ -212,6 +212,21 @@ class Item:
     def get_stat(self, key: str, default=0):
         return self.stats.get(key, default)
 
+    def to_save_dict(self) -> dict[str, Any]:
+        """Serialise this item to a JSON-safe dictionary."""
+        rarity_str = self.rarity.value if isinstance(self.rarity, Rarity) else str(self.rarity)
+        return {
+            "item_id": self.item_id,
+            "name": self.name,
+            "item_type": self.item_type,
+            "rarity": rarity_str,
+            "value": self.value,
+            "weight": self.weight,
+            "sprite": self.sprite,
+            "stats": dict(self.stats),
+            "quantity": self.quantity,
+        }
+
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}(id={self.item_id!r}, "
@@ -231,9 +246,87 @@ class Weapon(Item):
         self._damage = kwargs.pop("damage", None)
         self._fire_rate = kwargs.pop("fire_rate", None)
         self._magazine_size = kwargs.pop("magazine_size", None)
+        self.attachments: Dict[str, Any] = {}
         kwargs.pop("item_type", None)
         kwargs.pop("type", None)
         super().__init__(item_type="weapon", **kwargs)
+
+    # ------------------------------------------------------------------
+    # Attachment management
+    # ------------------------------------------------------------------
+
+    def attach(self, attachment: "Attachment", slot_type: str | None = None) -> bool:
+        """Equip *attachment* into the appropriate mod slot.
+
+        Args:
+            attachment: The attachment to equip.
+            slot_type:  Override the attachment's own ``slot_type``.
+
+        Returns:
+            ``True`` on success, ``False`` if the slot is unavailable,
+            already occupied, or the attachment is incompatible.
+        """
+        target_slot = slot_type if slot_type is not None else attachment.slot_type
+        # Slot type must be non-empty
+        if not target_slot:
+            return False
+        # Weapon must have this mod slot
+        if target_slot not in self.mod_slots:
+            return False
+        # Slot must not be occupied
+        if target_slot in self.attachments:
+            return False
+        # Compatibility check
+        if attachment.compatible_weapons and self.item_id not in attachment.compatible_weapons:
+            return False
+        self.attachments[target_slot] = attachment
+        return True
+
+    def detach(self, slot_type: str) -> "Attachment | None":
+        """Remove and return the attachment in *slot_type*, or ``None``."""
+        return self.attachments.pop(slot_type, None)
+
+    def get_attachment(self, slot_type: str) -> "Attachment | None":
+        """Return the attachment in *slot_type* without removing it."""
+        return self.attachments.get(slot_type, None)
+
+    def available_slots(self) -> list[str]:
+        """Return mod slots that are not currently occupied."""
+        return [s for s in self.mod_slots if s not in self.attachments]
+
+    def occupied_slots(self) -> list[str]:
+        """Return mod slots that currently have an attachment."""
+        return [s for s in self.mod_slots if s in self.attachments]
+
+    def _attachment_bonus(self, stat_key: str) -> float:
+        """Sum the stat delta for *stat_key* across all equipped attachments."""
+        total = 0.0
+        for att in self.attachments.values():
+            total += att.stat_delta.get(stat_key, 0.0)
+        return total
+
+    def effective_stat(self, stat_key: str, base: float | None = None) -> float:
+        """Return the effective value of *stat_key* including attachment bonuses.
+
+        The base value is resolved from (in order):
+        1. Explicit *base* parameter
+        2. Direct weapon attribute (damage, fire_rate)
+        3. ``self.stats`` dict
+        4. Fallback to 0.0
+        """
+        if base is not None:
+            base_val = float(base)
+        elif stat_key == "damage" and self._damage is not None:
+            base_val = float(self._damage)
+        elif stat_key == "fire_rate" and self._fire_rate is not None:
+            base_val = float(self._fire_rate)
+        else:
+            base_val = float(self.stats.get(stat_key, 0.0))
+        return base_val + self._attachment_bonus(stat_key)
+
+    # ------------------------------------------------------------------
+    # Base stat properties
+    # ------------------------------------------------------------------
 
     @property
     def damage(self) -> int:
@@ -367,6 +460,7 @@ class Attachment(Item):
     def __init__(self, **kwargs: Any) -> None:
         self.compatible_weapons: list = kwargs.pop("compatible_weapons", [])
         self._stat_delta: dict = kwargs.pop("stat_delta", {})
+        self.slot_type: str = kwargs.pop("slot_type", "")
         kwargs.pop("item_type", None)
         kwargs.pop("type", None)
         super().__init__(item_type="attachment", **kwargs)
@@ -430,6 +524,17 @@ def make_item(
             kwargs["item_type"] = _item_type
         if _item_type == "armor":
             kwargs.setdefault("armor_value", int(data.get("armor_value", 0)))
+        if _item_type == "attachment":
+            if "slot_type" in data:
+                kwargs["slot_type"] = data["slot_type"]
+            if "stat_delta" in data:
+                kwargs["stat_delta"] = data["stat_delta"]
+            if "compatible_weapons" in data:
+                kwargs["compatible_weapons"] = data["compatible_weapons"]
+        if _item_type == "weapon":
+            for wk in ("damage", "fire_rate", "magazine_size", "mod_slots"):
+                if wk in data:
+                    kwargs[wk] = data[wk]
         return cls(**kwargs)
 
     # Positional/keyword call convention
