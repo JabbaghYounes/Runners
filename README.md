@@ -1,5 +1,3 @@
-[![Built with Ricky](https://img.shields.io/badge/Built%20with-Ricky-ff6b35?style=for-the-badge&logo=dependabot&logoColor=white)](https://github.com/JabbaghYounes/Ricky)
-
 <p align="center">
   <img src="assets/logo.png" alt="Runners" width="300" />
 </p>
@@ -11,6 +9,8 @@
 </p>
 
 ---
+
+[![Built with Ricky](https://img.shields.io/badge/Built%20with-Ricky-ff6b35?style=for-the-badge&logo=dependabot&logoColor=white)](https://github.com/JabbaghYounes/Ricky)
 
 ## Features
 
