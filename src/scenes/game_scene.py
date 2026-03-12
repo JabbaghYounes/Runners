@@ -61,13 +61,9 @@ class GameScene(BaseScene):
         # Loot value bonus from home base
         self.loot_value_bonus: float = 0.0
 
-        # Try to load the full map-based setup.
-        # Only attempt full init when game systems (xp, currency, home_base) are
-        # provided, signalling a real game round rather than a lightweight test.
+        # Try to load the full map-based setup when a scene manager is provided.
         self._full_init = False
-        _want_full = (self._sm is not None
-                      and (xp_system is not None or currency is not None
-                           or home_base is not None))
+        _want_full = self._sm is not None
         if _want_full:
             try:
                 self._init_full(zones)

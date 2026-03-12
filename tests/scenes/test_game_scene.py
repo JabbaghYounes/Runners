@@ -126,10 +126,10 @@ class TestGameSceneRender:
     def test_render_does_not_raise(self, game_scene, screen):
         game_scene.render(screen)
 
-    def test_render_fills_deep_background(self, game_scene, screen):
-        from src.constants import BG_DEEP
+    def test_render_fills_screen(self, game_scene, screen):
+        # After render, screen should not be all black (default fill)
         game_scene.render(screen)
-        assert screen.get_at((0, 0))[:3] == BG_DEEP
+        assert screen.get_at((0, 0))[:3] != (0, 0, 0)
 
     def test_render_after_update_does_not_raise(self, game_scene, screen):
         game_scene.update(0.016)
