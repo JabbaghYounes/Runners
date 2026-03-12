@@ -134,7 +134,8 @@ class Settings:
 def _parse_key_bindings(raw: Dict[str, str]) -> Dict[str, int]:
     """Convert string key names from JSON to pygame key constants.
 
-    Unknown names fall back to the DEFAULT_KEYS mapping.
+    Unknown names (including mouse buttons like ``"mouse1"``) fall back to
+    the DEFAULT_KEYS mapping.
     Import is deferred to avoid a circular dependency with constants.py.
     """
     from src.constants import DEFAULT_KEYS  # noqa: PLC0415
@@ -143,8 +144,11 @@ def _parse_key_bindings(raw: Dict[str, str]) -> Dict[str, int]:
     for action, default_keycode in DEFAULT_KEYS.items():
         name = raw.get(action)
         if name:
-            code = pygame.key.key_code(name)
-            result[action] = code if code != -1 else default_keycode
+            try:
+                code = pygame.key.key_code(name)
+                result[action] = code if code != -1 else default_keycode
+            except (ValueError, pygame.error):
+                result[action] = default_keycode
         else:
             result[action] = default_keycode
     return result
