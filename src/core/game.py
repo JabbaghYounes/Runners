@@ -61,7 +61,7 @@ class GameApp:
         self.bus.subscribe("scene_request", self._on_scene_request)
 
         # Boot into the main menu
-        self.scenes.push(MainMenu(self.settings, self.assets, self.bus))
+        self.scenes.push(MainMenu(self.scenes, self.settings, self.assets, self.bus))
 
         self._running: bool = False
 
