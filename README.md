@@ -46,6 +46,12 @@
 ```bash
 git clone https://github.com/JabbaghYounes/Runners.git
 cd Runners
+
+# Create and activate a virtual environment
+python3 -m venv venv
+source venv/bin/activate        # Linux / macOS
+# venv\Scripts\activate         # Windows
+
 pip install -r requirements.txt
 python main.py
 ```
