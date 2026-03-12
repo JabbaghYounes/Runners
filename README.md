@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="Runners" width="300" />
+  <img src="assets/logo.png" alt="Runners" width="512" />
 </p>
 
 <p align="center">
