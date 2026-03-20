@@ -273,6 +273,7 @@ class GameScene(BaseScene):
         self._challenge = None
         if not hasattr(self, '_audio_sys'):
             self._audio_sys = None
+        self._shooting = None
 
         self._round_timer = None
 
@@ -431,6 +432,8 @@ class GameScene(BaseScene):
                 self.player.handle_input(pygame.key.get_pressed(), events)
             except Exception:
                 pass
+            if self._shooting is not None:
+                self._shooting.handle_events(events)
 
     def update(self, dt: float) -> None:
         if self._map_overlay_visible:
@@ -472,7 +475,7 @@ class GameScene(BaseScene):
 
         # Projectile movement
         for proj in self.projectiles:
-            proj.update(dt)
+            proj.update(dt, self.tile_map)
         self.projectiles = [p for p in self.projectiles if p.alive]
 
         # Combat — targets include the player so enemy projectiles can hit them.
@@ -676,12 +679,36 @@ class GameScene(BaseScene):
             except Exception:
                 pass
 
+        # Crosshair — drawn on top of everything at HUD layer level
+        if self._shooting is not None:
+            self._shooting.render_crosshair(screen, cam_off)
+
     # ------------------------------------------------------------------
     # HUD state builder
     # ------------------------------------------------------------------
 
     def _build_hud_state(self):
         from src.ui.hud_state import HUDState, ZoneInfo, WeaponInfo, ConsumableSlot
+
+        # --- WeaponInfo: derive from ShootingSystem + player inventory -------
+        weapon_info = None
+        if self._shooting is not None:
+            inv = getattr(self.player, 'inventory', None)
+            equipped = getattr(inv, 'equipped_weapon', None) if inv is not None else None
+            if equipped is not None:
+                ws = self._shooting.weapon_state
+                reload_prog = (
+                    (1.0 - ws.reload_timer / ws.reload_time)
+                    if ws.reloading and ws.reload_time > 0
+                    else 0.0
+                )
+                weapon_info = WeaponInfo(
+                    name=equipped.name,
+                    ammo_current=ws.ammo,
+                    ammo_reserve=ws.magazine_size,
+                    reloading=ws.reloading,
+                    reload_progress=reload_prog,
+                )
 
         tile_map = getattr(self, 'tile_map', None)
         ext_rect = getattr(tile_map, 'extraction_rect', None) if tile_map else None

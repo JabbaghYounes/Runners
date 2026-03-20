@@ -1,3 +1,4 @@
+# Run: pytest tests/test_combat_system.py
 """Tests for CombatSystem — projectile collision and damage pipeline.
 
 Covers:
@@ -258,3 +259,237 @@ class TestCombatPlayerEndToEnd:
         hp = getattr(player, 'current_health', player.health)
         assert hp == 0
         assert player.alive is False
+
+
+# ---------------------------------------------------------------------------
+# EventBus integration — damage_taken and entity_killed
+# ---------------------------------------------------------------------------
+
+class _MortalEntity(_Entity):
+    """_Entity that tracks HP and sets alive=False when health hits zero."""
+
+    def __init__(self, x: int = 100, y: int = 100, hp: int = 50, armor: int = 0):
+        super().__init__(x=x, y=y, armor=armor)
+        self._hp = hp
+
+    def take_damage(self, amount: int) -> int:
+        self.damage_log.append(amount)
+        self._hp -= amount
+        if self._hp <= 0:
+            self.alive = False
+        return amount
+
+
+class TestCombatEvents:
+    """CombatSystem emits 'damage_taken' and 'entity_killed' on the EventBus.
+
+    Uses the shared ``event_bus`` fixture from conftest.py, which records all
+    emitted events via ``all_events(name)`` and ``first_event(name)``.
+    """
+
+    # ------------------------------------------------------------------
+    # damage_taken — emitted on every successful hit
+    # ------------------------------------------------------------------
+
+    def test_damage_taken_event_emitted_on_hit(self, event_bus):
+        """Every successful projectile hit emits exactly one 'damage_taken'."""
+        cs = CombatSystem(event_bus=event_bus)
+        target = _Entity()
+        proj = _overlapping_proj(target, damage=20)
+
+        cs.update([proj], [target], dt=0.016)
+
+        assert len(event_bus.all_events("damage_taken")) == 1
+
+    def test_damage_taken_not_emitted_when_no_bus(self):
+        """CombatSystem with event_bus=None must not raise on a hit."""
+        cs = CombatSystem(event_bus=None)
+        target = _Entity()
+        proj = _overlapping_proj(target, damage=20)
+
+        cs.update([proj], [target], dt=0.016)  # must not raise
+
+        # No assertion on bus needed — test is that it doesn't crash
+        assert proj.alive is False
+
+    def test_damage_taken_carries_correct_victim(self, event_bus):
+        cs = CombatSystem(event_bus=event_bus)
+        target = _Entity()
+        proj = _overlapping_proj(target, damage=20)
+
+        cs.update([proj], [target], dt=0.016)
+
+        payload = event_bus.first_event("damage_taken")
+        assert payload["victim"] is target
+
+    def test_damage_taken_carries_correct_attacker(self, event_bus):
+        attacker = _Entity(x=0, y=0)
+        cs = CombatSystem(event_bus=event_bus)
+        target = _Entity()
+        proj = _overlapping_proj(target, damage=20, owner=attacker)
+
+        cs.update([proj], [target], dt=0.016)
+
+        payload = event_bus.first_event("damage_taken")
+        assert payload["attacker"] is attacker
+
+    def test_damage_taken_amount_matches_effective_damage_with_zero_armor(self, event_bus):
+        """amount in payload equals raw damage when target has no armor."""
+        cs = CombatSystem(event_bus=event_bus)
+        target = _Entity(armor=0)
+        proj = _overlapping_proj(target, damage=25)
+
+        cs.update([proj], [target], dt=0.016)
+
+        payload = event_bus.first_event("damage_taken")
+        assert payload["amount"] == 25
+
+    def test_damage_taken_amount_reflects_armor_reduction(self, event_bus):
+        """amount in payload is post-armor effective damage, not the raw value."""
+        cs = CombatSystem(event_bus=event_bus)
+        target = _Entity(armor=10)
+        proj = _overlapping_proj(target, damage=30)
+
+        cs.update([proj], [target], dt=0.016)
+
+        payload = event_bus.first_event("damage_taken")
+        # effective = max(1, 30 − 10) = 20
+        assert payload["amount"] == 20
+
+    def test_damage_taken_amount_minimum_one_when_armor_absorbs_all(self, event_bus):
+        """Armor ≥ raw damage still yields amount == 1 (damage floor)."""
+        cs = CombatSystem(event_bus=event_bus)
+        target = _Entity(armor=9999)
+        proj = _overlapping_proj(target, damage=5)
+
+        cs.update([proj], [target], dt=0.016)
+
+        payload = event_bus.first_event("damage_taken")
+        assert payload["amount"] == 1
+
+    def test_damage_taken_emitted_for_each_projectile_hit(self, event_bus):
+        """Two projectiles hitting two targets produce two 'damage_taken' events."""
+        cs = CombatSystem(event_bus=event_bus)
+        t1 = _Entity(x=50, y=50)
+        t2 = _Entity(x=300, y=300)
+        p1 = _overlapping_proj(t1, damage=10)
+        p2 = _overlapping_proj(t2, damage=15)
+
+        cs.update([p1, p2], [t1, t2], dt=0.016)
+
+        assert len(event_bus.all_events("damage_taken")) == 2
+
+    def test_damage_taken_not_emitted_when_projectile_is_dead(self, event_bus):
+        """A spent (alive=False) projectile produces no damage_taken event."""
+        cs = CombatSystem(event_bus=event_bus)
+        target = _Entity()
+        proj = _overlapping_proj(target, damage=20)
+        proj.alive = False  # already spent
+
+        cs.update([proj], [target], dt=0.016)
+
+        assert event_bus.all_events("damage_taken") == []
+
+    def test_damage_taken_not_emitted_when_target_is_dead(self, event_bus):
+        """Projectile vs dead target produces no damage_taken event."""
+        cs = CombatSystem(event_bus=event_bus)
+        target = _Entity(alive=False)
+        proj = _overlapping_proj(target, damage=20)
+
+        cs.update([proj], [target], dt=0.016)
+
+        assert event_bus.all_events("damage_taken") == []
+
+    def test_damage_taken_not_emitted_for_self_hit(self, event_bus):
+        """Owner's own projectile produces no damage_taken event."""
+        cs = CombatSystem(event_bus=event_bus)
+        entity = _Entity()
+        proj = _overlapping_proj(entity, damage=20, owner=entity)
+
+        cs.update([proj], [entity], dt=0.016)
+
+        assert event_bus.all_events("damage_taken") == []
+
+    # ------------------------------------------------------------------
+    # entity_killed — emitted when a hit reduces target to dead
+    # ------------------------------------------------------------------
+
+    def test_entity_killed_emitted_on_lethal_hit(self, event_bus):
+        """Lethal projectile hit emits exactly one 'entity_killed' event."""
+        cs = CombatSystem(event_bus=event_bus)
+        target = _MortalEntity(hp=10)
+        proj = _overlapping_proj(target, damage=9999)
+
+        cs.update([proj], [target], dt=0.016)
+
+        assert len(event_bus.all_events("entity_killed")) == 1
+
+    def test_entity_killed_carries_correct_victim(self, event_bus):
+        cs = CombatSystem(event_bus=event_bus)
+        target = _MortalEntity(hp=10)
+        proj = _overlapping_proj(target, damage=9999)
+
+        cs.update([proj], [target], dt=0.016)
+
+        payload = event_bus.first_event("entity_killed")
+        assert payload["victim"] is target
+
+    def test_entity_killed_carries_correct_killer(self, event_bus):
+        cs = CombatSystem(event_bus=event_bus)
+        attacker = _Entity(x=0, y=0)
+        target = _MortalEntity(hp=10)
+        proj = _overlapping_proj(target, damage=9999, owner=attacker)
+
+        cs.update([proj], [target], dt=0.016)
+
+        payload = event_bus.first_event("entity_killed")
+        assert payload["killer"] is attacker
+
+    def test_entity_killed_not_emitted_on_non_lethal_hit(self, event_bus):
+        """A non-lethal hit must not produce an 'entity_killed' event."""
+        cs = CombatSystem(event_bus=event_bus)
+        target = _MortalEntity(hp=100)
+        proj = _overlapping_proj(target, damage=1)  # non-lethal
+
+        cs.update([proj], [target], dt=0.016)
+
+        assert event_bus.all_events("entity_killed") == []
+
+    # ------------------------------------------------------------------
+    # player_killed — backward compatibility alongside entity_killed
+    # ------------------------------------------------------------------
+
+    def test_player_killed_backward_compat_emitted_on_lethal_hit(self, event_bus):
+        """'player_killed' is still emitted alongside 'entity_killed' for
+        backward compatibility with HUD/audio subscribers."""
+        cs = CombatSystem(event_bus=event_bus)
+        target = _MortalEntity(hp=10)
+        proj = _overlapping_proj(target, damage=9999)
+
+        cs.update([proj], [target], dt=0.016)
+
+        assert len(event_bus.all_events("player_killed")) == 1
+        assert len(event_bus.all_events("entity_killed")) == 1
+
+    def test_both_kill_events_carry_same_killer_and_victim(self, event_bus):
+        """'player_killed' and 'entity_killed' must share the same payload."""
+        cs = CombatSystem(event_bus=event_bus)
+        attacker = _Entity(x=0, y=0)
+        target = _MortalEntity(hp=10)
+        proj = _overlapping_proj(target, damage=9999, owner=attacker)
+
+        cs.update([proj], [target], dt=0.016)
+
+        pk = event_bus.first_event("player_killed")
+        ek = event_bus.first_event("entity_killed")
+        assert pk["killer"] is ek["killer"] is attacker
+        assert pk["victim"] is ek["victim"] is target
+
+    def test_player_killed_not_emitted_on_non_lethal_hit(self, event_bus):
+        cs = CombatSystem(event_bus=event_bus)
+        target = _MortalEntity(hp=100)
+        proj = _overlapping_proj(target, damage=1)
+
+        cs.update([proj], [target], dt=0.016)
+
+        assert event_bus.all_events("player_killed") == []

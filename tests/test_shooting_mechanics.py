@@ -1,3 +1,4 @@
+# Run: pytest tests/test_shooting_mechanics.py
 """Tests for the shooting mechanics feature.
 
 Covers:
@@ -717,6 +718,30 @@ class TestWeaponConfigurableStats:
 # 6. Projectile basic behavior
 # ===========================================================================
 
+# ---------------------------------------------------------------------------
+# Minimal tile-map stub used by tile-collision tests
+# ---------------------------------------------------------------------------
+
+class _MockTileMap:
+    """Minimal tile map stub for tile-collision unit tests.
+
+    Args:
+        solid_cells: set of (col, row) tuples that are solid.
+        cols:        optional int — the map width in tiles (to test positive edge).
+        rows:        optional int — the map height in tiles (to test positive edge).
+    """
+
+    def __init__(self, solid_cells=None, cols=None, rows=None):
+        self._solid = set(solid_cells or [])
+        if cols is not None:
+            self.cols = cols
+        if rows is not None:
+            self.rows = rows
+
+    def is_solid(self, col: int, row: int) -> bool:
+        return (col, row) in self._solid
+
+
 class TestProjectileBasics:
     """Projectile entity update and TTL."""
 
@@ -755,6 +780,237 @@ class TestProjectileBasics:
         proj = Projectile(0, 0, vx=0, vy=0, damage=10)
         entity = _FakeEntity(x=500, y=500)
         assert not proj.rect.colliderect(entity.rect)
+
+    # ------------------------------------------------------------------
+    # Tile-collision despawn (Phase 1 Task 1 + Phase 2 Task 2)
+    # ------------------------------------------------------------------
+
+    def test_projectile_despawns_on_solid_tile_collision(self):
+        """Projectile entering a solid tile is immediately despawned."""
+        from src.constants import TILE_SIZE
+
+        proj = Projectile(0, 0, vx=0, vy=0, damage=10)
+        # center is at (rect.centerx, rect.centery) = (4, 2) → tile (0, 0)
+        col = proj.rect.centerx // TILE_SIZE
+        row = proj.rect.centery // TILE_SIZE
+        tile_map = _MockTileMap(solid_cells={(col, row)})
+
+        proj.update(dt=0.001, tile_map=tile_map)
+
+        assert proj.alive is False
+
+    def test_projectile_stays_alive_on_non_solid_tile(self):
+        """Projectile in open air (non-solid tile) is not despawned."""
+        proj = Projectile(0, 0, vx=0, vy=0, damage=10)
+        tile_map = _MockTileMap(solid_cells=set())  # no solid tiles
+
+        proj.update(dt=0.001, tile_map=tile_map)
+
+        assert proj.alive is True
+
+    def test_projectile_tile_map_none_does_not_crash(self):
+        """Passing tile_map=None (no map) must not raise — backward compat."""
+        proj = Projectile(0, 0, vx=100, vy=0, damage=10)
+
+        proj.update(dt=0.016, tile_map=None)  # must not raise
+
+        assert proj.alive is True  # TTL not exhausted
+
+    def test_projectile_despawns_when_column_is_negative(self):
+        """Projectile that exits the left edge of the world is despawned."""
+        proj = Projectile(-200, 0, vx=0, vy=0, damage=10)
+        # rect.centerx is negative → col < 0
+        tile_map = _MockTileMap()
+
+        proj.update(dt=0.001, tile_map=tile_map)
+
+        assert proj.alive is False
+
+    def test_projectile_despawns_when_row_is_negative(self):
+        """Projectile that exits the top edge of the world is despawned."""
+        proj = Projectile(0, -200, vx=0, vy=0, damage=10)
+        # rect.centery is negative → row < 0
+        tile_map = _MockTileMap()
+
+        proj.update(dt=0.001, tile_map=tile_map)
+
+        assert proj.alive is False
+
+    def test_projectile_despawns_when_column_exceeds_map_width(self):
+        """Projectile past the right edge (col >= cols) is despawned."""
+        from src.constants import TILE_SIZE
+
+        proj = Projectile(0, 0, vx=0, vy=0, damage=10)
+        col = proj.rect.centerx // TILE_SIZE  # 0
+        # Map has only col=0 width; col >= cols triggers despawn
+        tile_map = _MockTileMap(solid_cells=set(), cols=0)
+
+        proj.update(dt=0.001, tile_map=tile_map)
+
+        assert proj.alive is False
+
+    def test_projectile_despawns_when_row_exceeds_map_height(self):
+        """Projectile past the bottom edge (row >= rows) is despawned."""
+        from src.constants import TILE_SIZE
+
+        proj = Projectile(0, 0, vx=0, vy=0, damage=10)
+        row = proj.rect.centery // TILE_SIZE  # 0
+        # Map has only row=0 height; row >= rows triggers despawn
+        tile_map = _MockTileMap(solid_cells=set(), cols=999, rows=0)
+
+        proj.update(dt=0.001, tile_map=tile_map)
+
+        assert proj.alive is False
+
+    def test_projectile_not_despawned_when_inside_map_without_size_attrs(self):
+        """A map without cols/rows attributes skips positive-edge guard cleanly."""
+        proj = Projectile(0, 0, vx=0, vy=0, damage=10)
+        # _MockTileMap without cols/rows → no bounds attrs → rely on is_solid only
+        tile_map = _MockTileMap(solid_cells=set())
+
+        proj.update(dt=0.001, tile_map=tile_map)
+
+        assert proj.alive is True  # open tile, no size guard → survives
+
+    def test_solid_tile_check_uses_center_not_corner(self):
+        """Tile lookup is based on projectile center, not top-left corner."""
+        from src.constants import TILE_SIZE
+
+        proj = Projectile(0, 0, vx=0, vy=0, damage=10)
+        cx, cy = proj.rect.centerx, proj.rect.centery
+        col = cx // TILE_SIZE
+        row = cy // TILE_SIZE
+
+        # Solid at (col+1, row) — a tile the center does NOT occupy
+        tile_map = _MockTileMap(solid_cells={(col + 1, row)})
+        proj.update(dt=0.001, tile_map=tile_map)
+
+        assert proj.alive is True  # centre is not in a solid tile
+
+
+# ===========================================================================
+# 8. Weapon-swap ammo reset
+# ===========================================================================
+
+class TestWeaponSwapSync:
+    """Equipping a new weapon resets ammo, cooldown, and reload state."""
+
+    def test_load_from_weapon_resets_ammo_to_new_magazine_size(self):
+        """Switching to a weapon immediately fills its magazine."""
+        from src.inventory.item import Weapon
+
+        weapon = Weapon(
+            item_id="rifle_01", name="Test Rifle", rarity="common",
+            damage=30, fire_rate=6.0, magazine_size=20,
+            stats={"reload_time": 2.0},
+        )
+        ws = WeaponState(magazine_size=5)
+        ws.ammo = 2  # partially depleted before swap
+
+        ws.load_from_weapon(weapon)
+
+        assert ws.ammo == 20
+
+    def test_load_from_weapon_resets_fire_cooldown_to_zero(self):
+        """Mid-cooldown is cleared on weapon equip."""
+        from src.inventory.item import Weapon
+
+        weapon = Weapon(
+            item_id="smg_01", name="SMG", rarity="uncommon",
+            damage=12, fire_rate=10.0, magazine_size=30,
+            stats={"reload_time": 1.8},
+        )
+        ws = WeaponState()
+        ws.fire_cooldown = 0.5  # mid-shot cooldown
+
+        ws.load_from_weapon(weapon)
+
+        assert ws.fire_cooldown == 0.0
+
+    def test_load_from_weapon_cancels_active_reload(self):
+        """An in-progress reload is cancelled when a new weapon is equipped."""
+        from src.inventory.item import Weapon
+
+        weapon = Weapon(
+            item_id="pistol_01", name="Pistol", rarity="common",
+            damage=15, fire_rate=3.0, magazine_size=12,
+            stats={"reload_time": 1.5},
+        )
+        ws = WeaponState()
+        ws.reloading = True
+        ws.reload_timer = 1.2  # mid-reload
+
+        ws.load_from_weapon(weapon)
+
+        assert ws.reloading is False
+        assert ws.reload_timer == 0.0
+
+    def test_shooting_system_ammo_resets_when_equipped_weapon_changes(self):
+        """ShootingSystem._sync_weapon_from_player resets ammo on weapon swap."""
+        from src.inventory.item import Weapon
+
+        weapon_a = Weapon(
+            item_id="rifle_a", name="Rifle A", rarity="common",
+            damage=25, fire_rate=5.0, magazine_size=20,
+            stats={"reload_time": 2.0},
+        )
+        weapon_b = Weapon(
+            item_id="pistol_b", name="Pistol B", rarity="common",
+            damage=15, fire_rate=3.0, magazine_size=12,
+            stats={"reload_time": 1.5},
+        )
+
+        # Minimal player-alike with swappable equipped_weapon
+        class _PlayerWithInventory:
+            alive = True
+
+            def __init__(self, weapon):
+                self._weapon = weapon
+
+            @property
+            def center(self):
+                return (0.0, 0.0)
+
+            @property
+            def inventory(self):
+                return self
+
+            @property
+            def equipped_weapon(self):
+                return self._weapon
+
+            @equipped_weapon.setter
+            def equipped_weapon(self, val):
+                self._weapon = val
+
+        ss = ShootingSystem()
+        player = _PlayerWithInventory(weapon_a)
+
+        # First update syncs weapon_a
+        ss.update(player, dt=0.016)
+        assert ss.weapon_state.magazine_size == 20
+
+        # Deplete some ammo
+        ss._weapon_state.ammo = 5
+
+        # Swap to weapon_b
+        player._weapon = weapon_b
+        ss.update(player, dt=0.016)
+
+        assert ss.weapon_state.magazine_size == 12
+        assert ss.weapon_state.ammo == 12  # reset to weapon_b's magazine
+
+    def test_equip_none_weapon_resets_to_default_stats(self):
+        """equip_weapon(None) reverts all stats to DEFAULT_WEAPON_STATS."""
+        ss = ShootingSystem()
+        ss._weapon_state.damage = 999
+        ss._weapon_state.fire_rate = 0.1
+
+        ss.equip_weapon(None)
+
+        assert ss.weapon_state.damage == DEFAULT_WEAPON_STATS["damage"]
+        assert ss.weapon_state.fire_rate == DEFAULT_WEAPON_STATS["fire_rate"]
+        assert ss.weapon_state.ammo == int(DEFAULT_WEAPON_STATS["magazine_size"])
 
 
 # ===========================================================================
