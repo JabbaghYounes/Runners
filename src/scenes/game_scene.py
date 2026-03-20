@@ -384,26 +384,39 @@ class GameScene(BaseScene):
             all_physical = [self.player] + [e for e in self.enemies if e.alive]
             self._physics.update(all_physical, self.tile_map, dt)
 
+        # Enemy animations: sync physics position + advance animation controller.
+        # Must happen AFTER physics and BEFORE AISystem so AI reads correct coords.
+        for enemy in self.enemies:
+            if enemy.alive:
+                try:
+                    enemy.update(dt)
+                except Exception:
+                    pass
+
         # Projectile movement
         for proj in self.projectiles:
             proj.update(dt)
         self.projectiles = [p for p in self.projectiles if p.alive]
 
-        # Combat
+        # Combat — targets include the player so enemy projectiles can hit them.
+        # CombatSystem already skips proj.owner == target (no self-hits).
         if self._combat:
             self._combat.update(
                 self.projectiles,
-                [e for e in self.enemies if e.alive],
+                [self.player] + [e for e in self.enemies if e.alive],
                 dt,
             )
 
-        # AI
+        # AI — returns enemy-fired projectiles for this frame
         if self._ai:
             try:
-                self._ai.update(
+                enemy_projs = self._ai.update(
                     [e for e in self.enemies if e.alive],
                     self.player, self.tile_map, dt, self._event_bus,
+                    combat_system=self._combat,
                 )
+                if enemy_projs:
+                    self.projectiles.extend(enemy_projs)
             except Exception:
                 pass
 
