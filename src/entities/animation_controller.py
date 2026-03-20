@@ -12,7 +12,7 @@ from typing import Dict, List
 import pygame
 
 from src.constants import (
-    ACCENT_CYAN, ACCENT_GREEN, ACCENT_ORANGE, ACCENT_MAGENTA,
+    ACCENT_CYAN, ACCENT_GREEN, ACCENT_ORANGE, ACCENT_MAGENTA, ACCENT_RED,
     NORMAL_HEIGHT, CROUCH_HEIGHT,
 )
 
@@ -26,6 +26,8 @@ _FALLBACK_COLOURS: dict[str, tuple] = {
     "slide":       ACCENT_ORANGE,
     "jump":        ACCENT_MAGENTA,
     "fall":        ACCENT_MAGENTA,
+    "shoot":       ACCENT_CYAN,
+    "dead":        ACCENT_RED,
 }
 
 _PLAYER_W = 28

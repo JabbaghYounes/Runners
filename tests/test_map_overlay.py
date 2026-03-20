@@ -116,3 +116,103 @@ class TestMapOverlayRender:
             seconds_remaining=900.0,
             map_rect=pygame.Rect(0, 0, 3200, 960),
         )
+
+
+# ---------------------------------------------------------------------------
+# Data-driven zone colours — feature requirement: color comes from zone.color
+# ---------------------------------------------------------------------------
+
+
+class TestMapOverlayZoneColors:
+    """MapOverlay must use zone.color when present rather than a fixed palette."""
+
+    def test_render_with_zone_color_attribute_does_not_crash(
+        self, overlay_surface, extraction_rect
+    ):
+        """A Zone whose .color differs from the indexed palette must render fine."""
+        ov = MapOverlay(1280, 720)
+        # Use a Zone with an unusual colour that is NOT in ZONE_COLORS
+        zones = [
+            Zone("CUSTOM_ZONE", pygame.Rect(0, 0, 3200, 960), color=(200, 100, 50)),
+        ]
+        ov.render(
+            screen=overlay_surface,
+            zones=zones,
+            player_pos=(100.0, 800.0),
+            extraction_rect=extraction_rect,
+            enemies=[],
+            seconds_remaining=900.0,
+            map_rect=pygame.Rect(0, 0, 3200, 960),
+        )
+
+    def test_render_with_object_lacking_color_attr_falls_back_to_palette(
+        self, overlay_surface
+    ):
+        """Minimal objects without .color must fall back to indexed palette gracefully."""
+
+        class BareZone:
+            name = "BARE"
+            rect = pygame.Rect(0, 0, 3200, 960)
+
+        ov = MapOverlay(1280, 720)
+        ov.render(
+            screen=overlay_surface,
+            zones=[BareZone()],
+            player_pos=(100.0, 800.0),
+            extraction_rect=None,
+            enemies=[],
+            seconds_remaining=900.0,
+            map_rect=pygame.Rect(0, 0, 3200, 960),
+        )
+
+    def test_render_all_three_zones_with_distinct_custom_colors(
+        self, overlay_surface, extraction_rect
+    ):
+        """All three real-map zones with their intended colours must render."""
+        ov = MapOverlay(1280, 720)
+        zones = [
+            Zone("HANGAR BAY",     pygame.Rect(0, 0, 1088, 960),    color=(60, 120, 180)),
+            Zone("REACTOR CORE",   pygame.Rect(1088, 0, 1088, 960), color=(180, 80, 60)),
+            Zone("EXTRACTION PAD", pygame.Rect(2176, 0, 1024, 960), color=(60, 160, 80)),
+        ]
+        ov.render(
+            screen=overlay_surface,
+            zones=zones,
+            player_pos=(100.0, 800.0),
+            extraction_rect=extraction_rect,
+            enemies=[],
+            seconds_remaining=300.0,
+            map_rect=pygame.Rect(0, 0, 3200, 960),
+        )
+
+    def test_render_with_zero_zone_list_does_not_crash(self, overlay_surface):
+        """Empty zone list must render without error (no palette-index crash)."""
+        ov = MapOverlay(1280, 720)
+        ov.render(
+            screen=overlay_surface,
+            zones=[],
+            player_pos=(100.0, 800.0),
+            extraction_rect=None,
+            enemies=[],
+            seconds_remaining=900.0,
+            map_rect=pygame.Rect(0, 0, 3200, 960),
+        )
+
+    def test_render_with_zone_tuple_rect_does_not_crash(self, overlay_surface):
+        """Zones whose .rect is a (x, y, w, h) tuple must be accepted."""
+        ov = MapOverlay(1280, 720)
+
+        class TupleRectZone:
+            name = "TUPLE_ZONE"
+            rect = (0, 0, 3200, 960)
+            color = (100, 150, 200)
+
+        ov.render(
+            screen=overlay_surface,
+            zones=[TupleRectZone()],
+            player_pos=(100.0, 800.0),
+            extraction_rect=None,
+            enemies=[],
+            seconds_remaining=900.0,
+            map_rect=pygame.Rect(0, 0, 3200, 960),
+        )

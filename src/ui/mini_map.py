@@ -1,5 +1,9 @@
-import pygame
+from __future__ import annotations
+
 from typing import Optional, Tuple
+
+import pygame
+
 from src.ui.hud_state import HUDState
 from src.constants import ACCENT_CYAN, ACCENT_GREEN, ACCENT_MAGENTA, BORDER_DIM, PANEL_BG
 
@@ -9,8 +13,9 @@ ZONE_COLORS = [
     (60, 160, 80),
 ]
 
+
 class MiniMap:
-    def __init__(self, rect: pygame.Rect):
+    def __init__(self, rect: pygame.Rect) -> None:
         self.rect = rect
         self._base_surf: Optional[pygame.Surface] = None
         self._state: Optional[HUDState] = None
@@ -34,10 +39,18 @@ class MiniMap:
     def draw(self, surface: pygame.Surface) -> None:
         if self._state is None:
             return
+
         # Background
         pygame.draw.rect(surface, (6, 10, 18), self.rect)
         pygame.draw.rect(surface, BORDER_DIM, self.rect, 1)
-        # Zones
+
+        # Tile geometry layer — blit the baked minimap surface (scaled to fit)
+        tile_surf = getattr(self._state, 'tile_surf', None)
+        if tile_surf is not None:
+            scaled = pygame.transform.scale(tile_surf, (self.rect.w, self.rect.h))
+            surface.blit(scaled, self.rect.topleft)
+
+        # Zone colour overlays on top of tile geometry
         for i, zone in enumerate(self._state.zones):
             color = getattr(zone, 'color', ZONE_COLORS[i % len(ZONE_COLORS)])
             # Support both world_rect (new) and rect_tuple (legacy)
@@ -58,11 +71,13 @@ class MiniMap:
                 zone_surf = pygame.Surface((sw, sh), pygame.SRCALPHA)
                 zone_surf.fill((*color, 60))
                 surface.blit(zone_surf, (sx, sy))
-        # Extraction
+
+        # Extraction dot
         if self._state.extraction_pos:
             ex, ey = self._world_to_mini(*self._state.extraction_pos)
             pygame.draw.circle(surface, ACCENT_GREEN, (ex, ey), 4)
-        # Player
+
+        # Player dot
         if self._state.player_world_pos:
             px, py = self._world_to_mini(*self._state.player_world_pos)
             px = max(self.rect.x + 2, min(px, self.rect.right - 2))

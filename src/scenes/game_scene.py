@@ -130,7 +130,7 @@ class GameScene(BaseScene):
                 if item_id:
                     item = self._item_db.create(item_id)
                     if item:
-                        self.loot_items.append(LootItem(lx, ly, item))
+                        self.loot_items.append(LootItem(item, lx, ly))
         except Exception:
             pass
 
@@ -207,10 +207,19 @@ class GameScene(BaseScene):
         if self._skill_tree is not None:
             self._apply_skill_tree_bonuses(self.player, self._skill_tree)
 
+        # Round timer
+        from src.systems.round_timer import RoundTimer
+        self._round_timer = RoundTimer(self._event_bus)
+
+        # Transition guard — prevents double scene-replace when multiple
+        # "end-of-round" events arrive in the same frame.
+        self._transitioning: bool = False
+
         # Subscribe events
         self._event_bus.subscribe('enemy_killed', self._on_enemy_killed)
         self._event_bus.subscribe('extraction_success', self._on_extract)
         self._event_bus.subscribe('extraction_failed', self._on_extract_failed)
+        self._event_bus.subscribe('round_end', self._on_round_end)
 
         self._full_init = True
 
@@ -226,6 +235,8 @@ class GameScene(BaseScene):
         self.projectiles = []
         self._zones = zones_override if zones_override is not None else self._default_zones()
         self._extraction = None
+        self._round_timer = None
+        self._transitioning: bool = False
         self._hud = None
         self._map_overlay = None
         self._physics = None
@@ -343,10 +354,14 @@ class GameScene(BaseScene):
     # ------------------------------------------------------------------
 
     def on_enter(self) -> None:
-        pass
+        if self._round_timer:
+            self._round_timer.reset()
+            self._round_timer.start()
 
     def on_exit(self) -> None:
-        pass
+        if self._round_timer:
+            self._round_timer.reset()
+        self._transitioning = False
 
     def handle_events(self, events: List[pygame.event.Event]) -> None:
         for event in events:
@@ -359,6 +374,10 @@ class GameScene(BaseScene):
                     return
                 elif event.key == pygame.K_m:
                     self._map_overlay_visible = not self._map_overlay_visible
+                elif event.key == pygame.K_TAB:
+                    if self._full_init and not self._map_overlay_visible:
+                        self._push_inventory()
+                    return
 
         if not self._map_overlay_visible and self._full_init:
             try:
@@ -382,31 +401,48 @@ class GameScene(BaseScene):
         except Exception:
             self._e_held = False
 
+        # Round timer
+        if self._round_timer:
+            self._round_timer.update(dt)
+
         # Physics
         if self._physics:
             all_physical = [self.player] + [e for e in self.enemies if e.alive]
             self._physics.update(all_physical, self.tile_map, dt)
+
+        # Enemy animations: sync physics position + advance animation controller.
+        # Must happen AFTER physics and BEFORE AISystem so AI reads correct coords.
+        for enemy in self.enemies:
+            if enemy.alive:
+                try:
+                    enemy.update(dt)
+                except Exception:
+                    pass
 
         # Projectile movement
         for proj in self.projectiles:
             proj.update(dt)
         self.projectiles = [p for p in self.projectiles if p.alive]
 
-        # Combat
+        # Combat — targets include the player so enemy projectiles can hit them.
+        # CombatSystem already skips proj.owner == target (no self-hits).
         if self._combat:
             self._combat.update(
                 self.projectiles,
-                [e for e in self.enemies if e.alive],
+                [self.player] + [e for e in self.enemies if e.alive],
                 dt,
             )
 
-        # AI
+        # AI — returns enemy-fired projectiles for this frame
         if self._ai:
             try:
-                self._ai.update(
+                enemy_projs = self._ai.update(
                     [e for e in self.enemies if e.alive],
                     self.player, self.tile_map, dt, self._event_bus,
+                    combat_system=self._combat,
                 )
+                if enemy_projs:
+                    self.projectiles.extend(enemy_projs)
             except Exception:
                 pass
 
@@ -536,8 +572,7 @@ class GameScene(BaseScene):
                     extraction_rect=self.tile_map.extraction_rect,
                     enemies=self.enemies,
                     seconds_remaining=(
-                        self._extraction.seconds_remaining
-                        if self._extraction else 0
+                        self._round_timer.seconds_remaining if self._round_timer else 0
                     ),
                     map_rect=self.tile_map.map_rect,
                 )
@@ -593,7 +628,7 @@ class GameScene(BaseScene):
     # ------------------------------------------------------------------
 
     def _build_hud_state(self):
-        from src.ui.hud_state import HUDState, ZoneInfo, WeaponInfo
+        from src.ui.hud_state import HUDState, ZoneInfo, WeaponInfo, ConsumableSlot
 
         tile_map = getattr(self, 'tile_map', None)
         ext_rect = getattr(tile_map, 'extraction_rect', None) if tile_map else None
@@ -602,7 +637,13 @@ class GameScene(BaseScene):
         # Build zones list from tile_map zones if available, else from _zones
         if tile_map and hasattr(tile_map, 'zones'):
             zone_infos = [
-                ZoneInfo(name=z.name, world_rect=pygame.Rect(z.rect))
+                ZoneInfo(
+                    name=z.name,
+                    color=tuple(getattr(z, 'color', (60, 120, 180))),
+                    # pygame.Rect(z.rect) works whether z.rect is already a Rect
+                    # or a (x, y, w, h) tuple — confirming intent here.
+                    world_rect=pygame.Rect(z.rect),
+                )
                 for z in tile_map.zones
             ]
         else:
@@ -633,7 +674,28 @@ class GameScene(BaseScene):
         else:
             map_rect = pygame.Rect(0, 0, 1280, 720)
 
+        # Quick-slot items for HUD display (preserves positional alignment)
+        consumable_slots = []
+        try:
+            inv = getattr(self.player, "inventory", None)
+            if inv is not None:
+                for i in range(4):
+                    qs_item = inv.quick_slot_item(i)
+                    if qs_item is not None:
+                        consumable_slots.append(
+                            ConsumableSlot(
+                                label=qs_item.name[:8],
+                                count=getattr(qs_item, "quantity", 1),
+                                icon=None,
+                            )
+                        )
+                    else:
+                        consumable_slots.append(None)  # type: ignore[arg-type]
+        except AttributeError:
+            pass
+
         return HUDState(
+            tile_surf=getattr(getattr(self, 'tile_map', None), 'baked_minimap', None),
             hp=float(self.player.health),
             max_hp=float(self.player.max_health),
             armor=float(getattr(self.player, 'armor', 0)),
@@ -642,9 +704,7 @@ class GameScene(BaseScene):
             xp=xp_sys.xp if xp_sys else 0,
             xp_to_next=xp_sys.xp_to_next_level() if xp_sys else 100,
             seconds_remaining=(
-                self._extraction.seconds_remaining
-                if self._extraction and hasattr(self._extraction, 'seconds_remaining')
-                else 0
+                self._round_timer.seconds_remaining if self._round_timer else 0
             ),
             player_world_pos=self.player.center,
             map_world_rect=map_rect,
@@ -669,6 +729,7 @@ class GameScene(BaseScene):
                 if self._challenge and hasattr(self._challenge, 'get_active_challenges')
                 else []
             ),
+            consumable_slots=consumable_slots,
         )
 
     # ------------------------------------------------------------------
@@ -742,7 +803,10 @@ class GameScene(BaseScene):
         )
 
     def _on_extract(self, **kwargs: Any) -> None:
-        """Extraction succeeded — transition to PostRound."""
+        """Extraction succeeded -- push PostRound."""
+        if self._transitioning:
+            return
+        self._transitioning = True
         try:
             self._sm.replace(
                 self._build_post_round("success", self._collect_loot(), self._challenge)
@@ -751,7 +815,9 @@ class GameScene(BaseScene):
             print(f"[GameScene] PostRound push failed: {e}")
 
     def _on_extract_failed(self, **kwargs: Any) -> None:
-        """Extraction timed out — transition to PostRound (no loot kept)."""
+        if self._transitioning:
+            return
+        self._transitioning = True
         try:
             self._sm.replace(
                 self._build_post_round("timeout", [], self._challenge)
@@ -760,7 +826,9 @@ class GameScene(BaseScene):
             print(f"[GameScene] PostRound push failed: {e}")
 
     def _on_player_dead(self) -> None:
-        """Player eliminated — transition to PostRound (no challenge bonuses)."""
+        if self._transitioning:
+            return
+        self._transitioning = True
         try:
             self._sm.replace(
                 self._build_post_round("eliminated", [], None)
@@ -768,9 +836,26 @@ class GameScene(BaseScene):
         except Exception as e:
             print(f"[GameScene] PostRound push failed: {e}")
 
+    def _on_round_end(self, **kwargs: Any) -> None:
+        """Round timer expired -- force extraction failure for all players."""
+        self._on_extract_failed(**kwargs)
+
     def _push_pause(self) -> None:
         try:
             from src.scenes.pause_menu import PauseMenu
             self._sm.push(PauseMenu(self._sm, self._settings, self._assets))
         except Exception as e:
             print(f"[GameScene] PauseMenu push failed: {e}")
+
+    def _push_inventory(self) -> None:
+        """Push the InventoryScreen overlay onto the scene stack."""
+        if not self._full_init:
+            return
+        inv = getattr(self.player, "inventory", None)
+        if inv is None:
+            return
+        try:
+            from src.ui.inventory_screen import InventoryScreen
+            self._sm.push(InventoryScreen(self._sm, inv, self._assets))
+        except Exception as e:
+            print(f"[GameScene] InventoryScreen push failed: {e}")

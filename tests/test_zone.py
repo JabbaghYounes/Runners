@@ -75,3 +75,69 @@ class TestZoneFromTileMap:
             assert isinstance(zone.rect, pygame.Rect)
             # enemy_spawns comes from JSON
             assert isinstance(zone.enemy_spawns, list)
+
+
+# ---------------------------------------------------------------------------
+# Zone.color — new field added in the tile-map feature
+# ---------------------------------------------------------------------------
+
+
+class TestZoneColor:
+    """Zone.color must default to blue and accept any RGB triple."""
+
+    def test_default_color_is_blue(self):
+        z = Zone("Z", pygame.Rect(0, 0, 100, 100))
+        assert z.color == (60, 120, 180)
+
+    def test_custom_color_is_stored(self):
+        z = Zone("Z", pygame.Rect(0, 0, 100, 100), color=(255, 0, 0))
+        assert z.color == (255, 0, 0)
+
+    def test_color_is_a_three_element_tuple(self):
+        z = Zone("Z", pygame.Rect(0, 0, 100, 100), color=(128, 64, 32))
+        assert isinstance(z.color, tuple)
+        assert len(z.color) == 3
+
+    def test_color_components_are_integers(self):
+        z = Zone("Z", pygame.Rect(0, 0, 100, 100), color=(10, 20, 30))
+        for component in z.color:
+            assert isinstance(component, int)
+
+    def test_two_zones_with_different_colors_do_not_share_state(self):
+        z1 = Zone("A", pygame.Rect(0, 0, 100, 100), color=(255, 0, 0))
+        z2 = Zone("B", pygame.Rect(0, 0, 100, 100), color=(0, 0, 255))
+        assert z1.color != z2.color
+
+    def test_color_survives_round_trip_through_tile_map_json(self, tmp_path):
+        """Verify color is preserved when TileMap loads a zone with an explicit color."""
+        import json
+        from src.map.tile_map import TileMap
+        tiles = [[1] * 5 for _ in range(3)]
+        data = {
+            "tiles": tiles,
+            "zones": [
+                {
+                    "name": "CUSTOM",
+                    "rect": [0, 0, 160, 96],
+                    "color": [180, 80, 60],
+                }
+            ],
+        }
+        path = tmp_path / "color_map.json"
+        path.write_text(json.dumps(data))
+        tm = TileMap.load(str(path))
+        assert tm.zones[0].color == (180, 80, 60)
+
+    def test_color_uses_default_when_json_key_absent(self, tmp_path):
+        """When JSON zone has no 'color' key, Zone.color must be the default."""
+        import json
+        from src.map.tile_map import TileMap
+        tiles = [[1] * 5 for _ in range(3)]
+        data = {
+            "tiles": tiles,
+            "zones": [{"name": "NO_COLOR", "rect": [0, 0, 160, 96]}],
+        }
+        path = tmp_path / "no_color_map.json"
+        path.write_text(json.dumps(data))
+        tm = TileMap.load(str(path))
+        assert tm.zones[0].color == (60, 120, 180)
