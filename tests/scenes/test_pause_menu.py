@@ -225,3 +225,60 @@ class TestPauseMenuFrame:
     def test_update_then_render_does_not_raise(self, pause_menu, screen):
         pause_menu.update(0.016)
         pause_menu.render(screen)
+
+
+# ---------------------------------------------------------------------------
+# SETTINGS — PauseMenu exposes a SETTINGS button that pushes SettingsScreen
+# ---------------------------------------------------------------------------
+
+class TestPauseMenuSettings:
+    def test_btn_settings_attribute_exists(self, pause_menu):
+        assert hasattr(pause_menu, "_btn_settings")
+
+    def test_btn_settings_label_is_settings(self, pause_menu):
+        assert pause_menu._btn_settings.text == "SETTINGS"
+
+    def test_on_settings_calls_push_once(self, pause_menu, mock_sm):
+        pause_menu._on_settings()
+        mock_sm.push.assert_called_once()
+
+    def test_on_settings_pushes_settings_screen(self, pause_menu, mock_sm):
+        from src.scenes.settings_screen import SettingsScreen
+        pause_menu._on_settings()
+        pushed = mock_sm.push.call_args[0][0]
+        assert isinstance(pushed, SettingsScreen)
+
+    def test_settings_screen_receives_same_settings_object(
+        self, pause_menu, mock_sm, settings
+    ):
+        pause_menu._on_settings()
+        pushed = mock_sm.push.call_args[0][0]
+        assert pushed._settings is settings
+
+    def test_settings_screen_receives_same_scene_manager(self, pause_menu, mock_sm):
+        pause_menu._on_settings()
+        pushed = mock_sm.push.call_args[0][0]
+        assert pushed._sm is mock_sm
+
+    def test_on_settings_does_not_call_pop(self, pause_menu, mock_sm):
+        pause_menu._on_settings()
+        mock_sm.pop.assert_not_called()
+
+    def test_on_settings_does_not_call_replace(self, pause_menu, mock_sm):
+        pause_menu._on_settings()
+        mock_sm.replace.assert_not_called()
+
+    def test_panel_height_fits_four_buttons(self, pause_menu):
+        """Panel must be tall enough to accommodate RESUME/RESTART/SETTINGS/EXIT."""
+        assert pause_menu._PANEL_H >= 280
+
+    def test_render_draws_settings_button_without_raise(self, pause_menu, screen):
+        """Render must include the SETTINGS button without raising."""
+        pause_menu.render(screen)
+
+    def test_handle_events_routes_settings_button_without_raise(
+        self, pause_menu, mock_sm
+    ):
+        """_btn_settings.handle_event must be called inside handle_events."""
+        pause_menu.handle_events([_keydown(pygame.K_RETURN)])
+        # If _btn_settings were absent from handle_events this would AttributeError
