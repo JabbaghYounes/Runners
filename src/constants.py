@@ -85,6 +85,9 @@ HEALTH_COLOR = ( 80, 255,  80)
 ARMOR_COLOR  = ( 80, 160, 255)
 XP_COLOR     = (160,  80, 255)
 
+# ── Player stats ──────────────────────────────────────────────────────────────
+PLAYER_MAX_HEALTH: int = 100   # default HP for a new player
+
 # ── Extended physics constants ────────────────────────────────────────────────
 WALK_SPEED     = 180.0
 SPRINT_SPEED   = 300.0
