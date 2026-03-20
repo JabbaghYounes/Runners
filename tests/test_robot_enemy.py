@@ -210,3 +210,79 @@ class TestRobotEnemyAliveAndRect:
     def test_xp_reward_stored(self):
         robot = _make_robot(xp_reward=99)
         assert robot.xp_reward == 99
+
+
+# ---------------------------------------------------------------------------
+# Coordinate properties and sync_from_rect
+# ---------------------------------------------------------------------------
+
+class TestRobotEnemyCoordinates:
+    """x/y properties delegate to rect with float accumulation; sync_from_rect
+    pulls physics-resolved rect coordinates back into the float backing fields.
+
+    This is the core coordinate contract that lets PhysicsSystem (which writes
+    rect) and AISystem (which reads/writes enemy.x via property) stay in sync.
+    """
+
+    def test_x_getter_returns_initial_float_value(self):
+        robot = _make_robot(x=123.7)
+        assert robot.x == pytest.approx(123.7)
+
+    def test_y_getter_returns_initial_float_value(self):
+        robot = _make_robot(y=456.3)
+        assert robot.y == pytest.approx(456.3)
+
+    def test_setting_x_updates_rect_x_as_truncated_int(self):
+        robot = _make_robot(x=0.0)
+        robot.x = 73.9
+        assert robot.rect.x == 73
+
+    def test_setting_x_preserves_float_precision_in_backing_field(self):
+        robot = _make_robot(x=0.0)
+        robot.x = 73.9
+        assert robot.x == pytest.approx(73.9)
+
+    def test_setting_y_updates_rect_y_as_truncated_int(self):
+        robot = _make_robot(y=0.0)
+        robot.y = 150.6
+        assert robot.rect.y == 150
+
+    def test_setting_y_preserves_float_precision_in_backing_field(self):
+        robot = _make_robot(y=0.0)
+        robot.y = 150.6
+        assert robot.y == pytest.approx(150.6)
+
+    def test_initial_rect_position_matches_constructor_args(self):
+        robot = _make_robot(x=64.0, y=128.0)
+        assert robot.rect.x == 64
+        assert robot.rect.y == 128
+
+    def test_sync_from_rect_updates_x_from_rect(self):
+        """sync_from_rect() pulls PhysicsSystem-written rect.x into float x."""
+        robot = _make_robot(x=0.0)
+        robot.rect.x = 200        # simulate PhysicsSystem moving the rect
+        robot.sync_from_rect()
+        assert robot.x == pytest.approx(200.0)
+
+    def test_sync_from_rect_updates_y_from_rect(self):
+        robot = _make_robot(y=0.0)
+        robot.rect.y = 350
+        robot.sync_from_rect()
+        assert robot.y == pytest.approx(350.0)
+
+    def test_sync_from_rect_does_not_affect_unrelated_attributes(self):
+        """sync_from_rect touches only _float_x/_float_y; hp/state unchanged."""
+        robot = _make_robot(hp=40)
+        robot.state = AIState.AGGRO
+        robot.rect.x = 99
+        robot.sync_from_rect()
+        assert robot.hp == 40
+        assert robot.state == AIState.AGGRO
+
+    def test_x_property_round_trip_after_physics_sim(self):
+        """Setting x, then sync_from_rect from rect, restores original int value."""
+        robot = _make_robot(x=0.0)
+        robot.x = 100.9          # float_x = 100.9, rect.x = 100
+        robot.sync_from_rect()   # float_x = float(rect.x) = 100.0
+        assert robot.x == pytest.approx(100.0)
+        assert robot.rect.x == 100

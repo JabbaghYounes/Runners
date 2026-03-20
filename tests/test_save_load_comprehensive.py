@@ -48,10 +48,11 @@ def manager(save_path: Path) -> SaveManager:
 @pytest.fixture()
 def skill_tree_path(tmp_path: Path) -> str:
     data = {
+        "branches": ["general"],
         "nodes": [
-            {"id": "speed_1", "requires": [], "stat_bonus": {"speed": 5}},
-            {"id": "speed_2", "requires": ["speed_1"], "stat_bonus": {"speed": 5}},
-            {"id": "armor_1", "requires": [], "stat_bonus": {"armor": 3}},
+            {"id": "speed_1", "branch": "general", "requires": [], "stat_bonus": {"speed": 5}},
+            {"id": "speed_2", "branch": "general", "requires": ["speed_1"], "stat_bonus": {"speed": 5}},
+            {"id": "armor_1", "branch": "general", "requires": [], "stat_bonus": {"armor": 3}},
         ]
     }
     p = tmp_path / "skill_tree.json"
