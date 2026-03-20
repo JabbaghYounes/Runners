@@ -75,4 +75,5 @@ class HUDState:
     in_extraction_zone: bool = False
     extraction_progress: float = 0.0
     currency: int = 0
-    active_quick_slot: int = -1
+    # Baked 1-px-per-tile Surface from TileMap, or None when unavailable.
+    tile_surf: Optional[Any] = None

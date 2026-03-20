@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from typing import Dict, Any
+
 
 class XPSystem:
     BASE_XP = 900
@@ -7,6 +10,7 @@ class XPSystem:
     def __init__(self, event_bus=None):
         self.xp: int = 0
         self.level: int = 1
+        self.skill_points: int = 0
         self._pending_xp: int = 0
         self._event_bus = event_bus
 
@@ -41,9 +45,12 @@ class XPSystem:
         self.xp += amount
         old_level = self.level
         self._recalculate_level()
-        if self.level > old_level and self._event_bus is not None:
-            self._event_bus.emit("level_up", level=self.level)
-            self._event_bus.emit("level.up", level=self.level)
+        levels_gained = self.level - old_level
+        if levels_gained > 0:
+            self.skill_points += levels_gained
+            if self._event_bus is not None:
+                self._event_bus.emit("level_up", level=self.level)
+                self._event_bus.emit("level.up", level=self.level)
 
     def _recalculate_level(self) -> None:
         while self.xp >= self.xp_to_next_level():
@@ -53,12 +60,23 @@ class XPSystem:
     def xp_to_next_level(self) -> int:
         return int(self.BASE_XP * (self.SCALE ** (self.level - 1)))
 
+    def spend_skill_point(self, amount: int = 1) -> bool:
+        """Deduct *amount* skill points.
+
+        Returns True on success, False if the balance is insufficient.
+        """
+        if self.skill_points < amount:
+            return False
+        self.skill_points -= amount
+        return True
+
     def commit(self) -> None:
         self._pending_xp = 0
 
     def load(self, data: Dict[str, Any]) -> None:
         self.xp = data.get('xp', 0)
         self.level = data.get('level', 1)
+        self.skill_points = data.get('skill_points', 0)
 
     def to_save_dict(self) -> Dict[str, Any]:
-        return {'xp': self.xp, 'level': self.level}
+        return {'xp': self.xp, 'level': self.level, 'skill_points': self.skill_points}

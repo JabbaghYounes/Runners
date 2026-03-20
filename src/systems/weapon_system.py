@@ -55,11 +55,25 @@ class WeaponState:
         return self.ammo <= 0 and not self.reloading
 
     def load_from_weapon(self, weapon: Any) -> None:
-        """Copy stats from an inventory Weapon item."""
-        self.fire_rate = float(getattr(weapon, "fire_rate", DEFAULT_WEAPON_STATS["fire_rate"]))
-        self.damage = float(getattr(weapon, "damage", DEFAULT_WEAPON_STATS["damage"]))
+        """Copy stats from an inventory Weapon item, including attachment bonuses."""
+        # Use effective_stat() when available so attachment deltas are included.
+        if hasattr(weapon, "effective_stat"):
+            self.fire_rate = float(weapon.effective_stat("fire_rate"))
+            self.damage = float(weapon.effective_stat("damage"))
+        else:
+            self.fire_rate = float(getattr(weapon, "fire_rate", DEFAULT_WEAPON_STATS["fire_rate"]))
+            self.damage = float(getattr(weapon, "damage", DEFAULT_WEAPON_STATS["damage"]))
+
+        # reload_time: use the property (correct default) plus any attachment bonus.
+        base_reload = float(getattr(weapon, "reload_time", DEFAULT_WEAPON_STATS["reload_time"]))
+        att_reload_bonus = (
+            weapon._attachment_bonus("reload_time")
+            if hasattr(weapon, "_attachment_bonus")
+            else 0.0
+        )
+        self.reload_time = base_reload + att_reload_bonus
+
         self.magazine_size = int(getattr(weapon, "magazine_size", int(DEFAULT_WEAPON_STATS["magazine_size"])))
-        self.reload_time = float(getattr(weapon, "reload_time", DEFAULT_WEAPON_STATS["reload_time"]))
         self.projectile_speed = float(
             getattr(weapon, "projectile_speed",
                     weapon.stats.get("projectile_speed", DEFAULT_WEAPON_STATS["projectile_speed"])
