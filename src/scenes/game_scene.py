@@ -130,7 +130,7 @@ class GameScene(BaseScene):
                 if item_id:
                     item = self._item_db.create(item_id)
                     if item:
-                        self.loot_items.append(LootItem(lx, ly, item))
+                        self.loot_items.append(LootItem(item, lx, ly))
         except Exception:
             pass
 
@@ -371,6 +371,10 @@ class GameScene(BaseScene):
                     return
                 elif event.key == pygame.K_m:
                     self._map_overlay_visible = not self._map_overlay_visible
+                elif event.key == pygame.K_TAB:
+                    if self._full_init and not self._map_overlay_visible:
+                        self._push_inventory()
+                    return
 
         if not self._map_overlay_visible and self._full_init:
             try:
@@ -608,7 +612,7 @@ class GameScene(BaseScene):
     # ------------------------------------------------------------------
 
     def _build_hud_state(self):
-        from src.ui.hud_state import HUDState, ZoneInfo, WeaponInfo
+        from src.ui.hud_state import HUDState, ZoneInfo, WeaponInfo, ConsumableSlot
 
         tile_map = getattr(self, 'tile_map', None)
         ext_rect = getattr(tile_map, 'extraction_rect', None) if tile_map else None
@@ -654,6 +658,26 @@ class GameScene(BaseScene):
         else:
             map_rect = pygame.Rect(0, 0, 1280, 720)
 
+        # Quick-slot items for HUD display (preserves positional alignment)
+        consumable_slots = []
+        try:
+            inv = getattr(self.player, "inventory", None)
+            if inv is not None:
+                for i in range(4):
+                    qs_item = inv.quick_slot_item(i)
+                    if qs_item is not None:
+                        consumable_slots.append(
+                            ConsumableSlot(
+                                label=qs_item.name[:8],
+                                count=getattr(qs_item, "quantity", 1),
+                                icon=None,
+                            )
+                        )
+                    else:
+                        consumable_slots.append(None)  # type: ignore[arg-type]
+        except AttributeError:
+            pass
+
         return HUDState(
             tile_surf=getattr(getattr(self, 'tile_map', None), 'baked_minimap', None),
             hp=float(self.player.health),
@@ -689,6 +713,7 @@ class GameScene(BaseScene):
                 if self._challenge and hasattr(self._challenge, 'get_active_challenges')
                 else []
             ),
+            consumable_slots=consumable_slots,
         )
 
     # ------------------------------------------------------------------
@@ -782,3 +807,16 @@ class GameScene(BaseScene):
             self._sm.push(PauseMenu(self._sm, self._settings, self._assets))
         except Exception as e:
             print(f"[GameScene] PauseMenu push failed: {e}")
+
+    def _push_inventory(self) -> None:
+        """Push the InventoryScreen overlay onto the scene stack."""
+        if not self._full_init:
+            return
+        inv = getattr(self.player, "inventory", None)
+        if inv is None:
+            return
+        try:
+            from src.ui.inventory_screen import InventoryScreen
+            self._sm.push(InventoryScreen(self._sm, inv, self._assets))
+        except Exception as e:
+            print(f"[GameScene] InventoryScreen push failed: {e}")
