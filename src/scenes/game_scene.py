@@ -205,7 +205,7 @@ class GameScene(BaseScene):
             self._apply_skill_tree_bonuses(self.player, self._skill_tree)
 
         # Subscribe events
-        self._event_bus.subscribe('enemy_killed', self._on_enemy_killed)
+        # NOTE: 'enemy_killed' XP is handled solely by XPSystem to avoid double-award.
         self._event_bus.subscribe('extraction_success', self._on_extract)
         self._event_bus.subscribe('extraction_failed', self._on_extract_failed)
 
@@ -672,18 +672,11 @@ class GameScene(BaseScene):
     # Event handlers
     # ------------------------------------------------------------------
 
-    def _on_enemy_killed(self, **kwargs: Any) -> None:
-        xp = kwargs.get('xp_reward', 0)
-        if self._xp_system and xp:
-            old_level = self._xp_system.level
-            self._xp_system.award(xp)
-            if self._xp_system.level > old_level:
-                self._event_bus.emit('level.up', level=self._xp_system.level)
-
     def _on_extract(self, **kwargs: Any) -> None:
-        """Extraction succeeded -- push PostRound."""
+        """Extraction succeeded — build RoundSummary and push PostRound."""
         try:
             from src.scenes.post_round import PostRound
+            from src.core.round_summary import RoundSummary
             from src.save.save_manager import SaveManager
             save_mgr = SaveManager(_path('saves', 'save.json'))
             loot = []
@@ -693,19 +686,32 @@ class GameScene(BaseScene):
                     loot = list(inv.get_items())
                 elif isinstance(inv, list):
                     loot = list(inv)
+            challenges_completed, challenges_total = self._challenge_counts()
+            summary = RoundSummary(
+                extraction_status="success",
+                extracted_items=loot,
+                xp_earned=self._xp_system.pending_xp if self._xp_system else 0,
+                money_earned=0,
+                kills=self._challenge.kills if self._challenge else 0,
+                challenges_completed=challenges_completed,
+                challenges_total=challenges_total,
+                level_before=self._xp_system.level if self._xp_system else 1,
+            )
             self._sm.replace(PostRound(
-                sm=self._sm, settings=self._settings, assets=self._assets,
-                xp_system=self._xp_system, currency=self._currency,
+                summary=summary,
+                xp_system=self._xp_system,
+                currency=self._currency,
                 save_manager=save_mgr,
-                extracted=True,
-                loot_items=loot,
+                scene_manager=self._sm,
             ))
         except Exception as e:
             print(f"[GameScene] PostRound push failed: {e}")
 
     def _on_extract_failed(self, **kwargs: Any) -> None:
+        """Extraction timed out — build RoundSummary and push PostRound."""
         try:
             from src.scenes.post_round import PostRound
+            from src.core.round_summary import RoundSummary
             from src.save.save_manager import SaveManager
             save_mgr = SaveManager(_path('saves', 'save.json'))
             loot = []
@@ -715,30 +721,61 @@ class GameScene(BaseScene):
                     loot = list(inv.get_items())
                 elif isinstance(inv, list):
                     loot = list(inv)
+            challenges_completed, challenges_total = self._challenge_counts()
+            summary = RoundSummary(
+                extraction_status="timeout",
+                extracted_items=loot,
+                xp_earned=self._xp_system.pending_xp if self._xp_system else 0,
+                money_earned=0,
+                kills=self._challenge.kills if self._challenge else 0,
+                challenges_completed=challenges_completed,
+                challenges_total=challenges_total,
+                level_before=self._xp_system.level if self._xp_system else 1,
+            )
             self._sm.replace(PostRound(
-                sm=self._sm, settings=self._settings, assets=self._assets,
-                xp_system=self._xp_system, currency=self._currency,
+                summary=summary,
+                xp_system=self._xp_system,
+                currency=self._currency,
                 save_manager=save_mgr,
-                extracted=False,
-                loot_items=loot,
+                scene_manager=self._sm,
             ))
         except Exception as e:
             print(f"[GameScene] PostRound push failed: {e}")
 
     def _on_player_dead(self) -> None:
+        """Player eliminated — build RoundSummary and push PostRound."""
         try:
             from src.scenes.post_round import PostRound
+            from src.core.round_summary import RoundSummary
             from src.save.save_manager import SaveManager
             save_mgr = SaveManager(_path('saves', 'save.json'))
+            challenges_completed, challenges_total = self._challenge_counts()
+            summary = RoundSummary(
+                extraction_status="eliminated",
+                extracted_items=[],
+                xp_earned=self._xp_system.pending_xp if self._xp_system else 0,
+                money_earned=0,
+                kills=self._challenge.kills if self._challenge else 0,
+                challenges_completed=challenges_completed,
+                challenges_total=challenges_total,
+                level_before=self._xp_system.level if self._xp_system else 1,
+            )
             self._sm.replace(PostRound(
-                sm=self._sm, settings=self._settings, assets=self._assets,
-                xp_system=self._xp_system, currency=self._currency,
+                summary=summary,
+                xp_system=self._xp_system,
+                currency=self._currency,
                 save_manager=save_mgr,
-                extracted=False,
-                loot_items=[],
+                scene_manager=self._sm,
             ))
         except Exception as e:
             print(f"[GameScene] PostRound push failed: {e}")
+
+    def _challenge_counts(self) -> tuple:
+        """Return (completed, total) challenge counts; safe when _challenge is None."""
+        if self._challenge and hasattr(self._challenge, 'get_active_raw'):
+            raw = self._challenge.get_active_raw()
+            return sum(1 for c in raw if c.completed), len(raw)
+        return 0, 0
 
     def _push_pause(self) -> None:
         try:

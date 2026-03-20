@@ -113,17 +113,15 @@ class HUD:
 
     def teardown(self) -> None:
         """Unsubscribe from EventBus."""
-        for event in ('player.damaged', 'player_damaged', 'level.up', 'level_up', 'zone_entered'):
+        for event, handler in (
+            ('player.damaged', self._on_player_damaged),
+            ('player_damaged', self._on_player_damaged),
+            ('level.up',       self._on_level_up),
+            ('level_up',       self._on_level_up),
+            ('zone_entered',   self._on_zone_entered),
+        ):
             try:
-                self._event_bus.unsubscribe(event, self._on_player_damaged)
-            except Exception:
-                pass
-            try:
-                self._event_bus.unsubscribe(event, self._on_level_up)
-            except Exception:
-                pass
-            try:
-                self._event_bus.unsubscribe(event, self._on_zone_entered)
+                self._event_bus.unsubscribe(event, handler)
             except Exception:
                 pass
 
