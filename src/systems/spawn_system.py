@@ -1,4 +1,4 @@
-"""SpawnSystem -- instantiate all entities at round start.
+"""SpawnSystem -- instantiate robot enemies and PvP bots from map data.
 
 Spawn order: loot → robot enemies → PvP bots → player.
 
@@ -9,14 +9,17 @@ Zone enemy configuration (unchanged)::
 
     [{"type": "grunt", "pos": [x, y]}, ...]
 
+The top-level map JSON may carry a ``bot_spawns`` list::
+
+    [{"pos": [x, y], "patrol_waypoints": [[x1,y1], ...], "difficulty": "medium"}, ...]
+
 ``spawn_points`` on the zone are reused as patrol waypoints so that robots
 patrol the area they guard.
 """
 from __future__ import annotations
 
-import random
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, List
+import warnings
+from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
     from src.core.event_bus import EventBus
@@ -25,8 +28,8 @@ if TYPE_CHECKING:
     from src.entities.player import Player
     from src.entities.player_agent import PlayerAgent
     from src.entities.robot_enemy import RobotEnemy
+    from src.entities.player_agent import PlayerAgent
     from src.inventory.item_database import ItemDatabase
-    from src.map.tile_map import TileMap
     from src.map.zone import Zone
 
 
@@ -121,150 +124,86 @@ class SpawnSystem:
             all_enemies.extend(self.spawn_zone_enemies(zone, enemy_db))
         return all_enemies
 
-    # ------------------------------------------------------------------
-    # Player spawning
-    # ------------------------------------------------------------------
-
-    def spawn_player(self, player_spawns: List[tuple]) -> "Player":
-        """Instantiate the Player at a randomly chosen valid spawn point.
-
-        If *player_spawns* is empty the player is placed at world origin
-        ``(0, 0)`` so the method always returns a usable entity.
-        """
-        from src.entities.player import Player
-
-        if not player_spawns:
-            player = Player(0.0, 0.0)
-            self._emit("player", player, 0.0, 0.0)
-            return player
-
-        sx, sy = random.choice(player_spawns)
-        sx, sy = float(sx), float(sy)
-        player = Player(sx, sy)
-        self._emit("player", player, sx, sy)
-        return player
-
-    # ------------------------------------------------------------------
-    # Loot spawning
-    # ------------------------------------------------------------------
-
-    def spawn_loot(
+    def spawn_bots(
         self,
-        loot_spawns: List[tuple],
-        item_db: "ItemDatabase | None",
-    ) -> List["LootItem"]:
-        """Place a random loot item at each loot spawn point.
+        map_data: dict,
+        item_db: "ItemDatabase",
+    ) -> List["PlayerAgent"]:
+        """Instantiate PvP bots from the ``bot_spawns`` array in map data.
 
-        Returns an empty list when *item_db* is ``None`` or contains no items.
-        Any individual spawn that raises an exception is silently skipped.
-        """
-        from src.entities.loot_item import LootItem
+        Each entry may have:
+            ``pos``              — [x, y] world-space spawn position (required)
+            ``patrol_waypoints`` — [[x,y], …] patrol route (optional)
+            ``difficulty``       — ``"easy"`` | ``"medium"`` | ``"hard"``
 
-        if item_db is None:
-            return []
-        item_ids = getattr(item_db, "item_ids", [])
-        if not item_ids:
-            return []
+        Invalid or out-of-bounds entries are skipped with a warning.
 
-        loot_items: List["LootItem"] = []
-        for lx, ly in loot_spawns:
-            lx, ly = float(lx), float(ly)
-            try:
-                item_id = random.choice(item_ids)
-                item = item_db.create(item_id)
-                if item is not None:
-                    loot_item = LootItem(item, lx, ly)
-                    loot_items.append(loot_item)
-                    self._emit("loot", loot_item, lx, ly)
-            except Exception:
-                pass
-
-        return loot_items
-
-    # ------------------------------------------------------------------
-    # PvP bot spawning
-    # ------------------------------------------------------------------
-
-    def spawn_pvp_bots(self, zones: List["Zone"]) -> List["PlayerAgent"]:
-        """Create a PlayerAgent for each entry in zone.pvp_bot_spawns.
-
-        Zones without a ``pvp_bot_spawns`` attribute, or with an empty list,
-        contribute zero bots.  Individual creation failures are silently skipped.
+        Returns:
+            List of fully-equipped :class:`PlayerAgent` instances.
         """
         from src.entities.player_agent import PlayerAgent
+        from src.entities.bot_loadout import BotLoadoutBuilder
 
-        bots: List["PlayerAgent"] = []
-        for zone in zones:
-            bot_spawns = getattr(zone, "pvp_bot_spawns", None) or []
-            for bx, by in bot_spawns:
-                bx, by = float(bx), float(by)
+        bot_spawns = map_data.get("bot_spawns", [])
+        bots: List[PlayerAgent] = []
+
+        for i, entry in enumerate(bot_spawns):
+            # --- Validate required 'pos' key ---
+            if "pos" not in entry:
+                warnings.warn(
+                    f"[SpawnSystem] bot_spawns[{i}] missing 'pos' key — skipped",
+                    stacklevel=2,
+                )
+                continue
+
+            pos = entry["pos"]
+            try:
+                bx, by = float(pos[0]), float(pos[1])
+            except (TypeError, ValueError, IndexError):
+                warnings.warn(
+                    f"[SpawnSystem] bot_spawns[{i}] invalid pos {pos!r} — skipped",
+                    stacklevel=2,
+                )
+                continue
+
+            # --- Parse waypoints ---
+            raw_wps = entry.get("patrol_waypoints", [])
+            waypoints = []
+            for wp in raw_wps:
                 try:
-                    bot = PlayerAgent(x=bx, y=by)
-                    bots.append(bot)
-                    self._emit("pvp_bot", bot, bx, by)
-                except Exception:
+                    waypoints.append((float(wp[0]), float(wp[1])))
+                except (TypeError, ValueError, IndexError):
                     pass
+            if not waypoints:
+                waypoints = [(bx, by)]
+
+            difficulty: str = entry.get("difficulty", "medium")
+
+            # --- Build loadout ---
+            try:
+                loadout = BotLoadoutBuilder.random_loadout(item_db, difficulty)
+            except Exception as exc:
+                warnings.warn(
+                    f"[SpawnSystem] bot_spawns[{i}] loadout error: {exc} — "
+                    f"spawning with empty loadout",
+                    stacklevel=2,
+                )
+                loadout = {"weapon": None, "armor": None}
+
+            # --- Construct bot ---
+            try:
+                bot = PlayerAgent(
+                    x=bx,
+                    y=by,
+                    patrol_waypoints=waypoints,
+                    loadout=loadout,
+                    difficulty=difficulty,
+                )
+                bots.append(bot)
+            except Exception as exc:
+                warnings.warn(
+                    f"[SpawnSystem] bot_spawns[{i}] construction failed: {exc} — skipped",
+                    stacklevel=2,
+                )
 
         return bots
-
-    # ------------------------------------------------------------------
-    # Round-level orchestration
-    # ------------------------------------------------------------------
-
-    def spawn_round(
-        self,
-        tile_map: "TileMap",
-        enemy_db: "EnemyDatabase",
-        item_db: "ItemDatabase",
-    ) -> SpawnResult:
-        """Spawn all entities in dependency order and return a :class:`SpawnResult`.
-
-        Order: **loot → robot enemies → PvP bots → player**.
-        """
-        loot_spawns = getattr(tile_map, "loot_spawns", [])
-        zones = getattr(tile_map, "zones", [])
-        player_spawns = getattr(tile_map, "player_spawns", [])
-
-        # 1. Loot — world hazards first
-        loot_items = self.spawn_loot(loot_spawns, item_db)
-
-        # 2. Robot enemies
-        enemies = self.spawn_all_zones(zones, enemy_db)
-
-        # 3. PvP bots
-        pvp_bots = self.spawn_pvp_bots(zones)
-
-        # 4. Player — placed last so all hazards already exist
-        player = self.spawn_player(player_spawns)
-
-        return SpawnResult(
-            player=player,
-            enemies=enemies,
-            pvp_bots=pvp_bots,
-            loot_items=loot_items,
-        )
-
-    # ------------------------------------------------------------------
-    # Round teardown
-    # ------------------------------------------------------------------
-
-    def teardown(
-        self,
-        enemies: List[Any],
-        pvp_bots: List[Any],
-        loot_items: List[Any],
-    ) -> None:
-        """Mark every spawned entity dead and empty the caller's lists.
-
-        Idempotent: calling on already-empty lists or already-dead entities
-        is safe and produces no side effects.
-        """
-        for entity in enemies:
-            entity.alive = False
-        for entity in pvp_bots:
-            entity.alive = False
-        for entity in loot_items:
-            entity.alive = False
-        enemies.clear()
-        pvp_bots.clear()
-        loot_items.clear()

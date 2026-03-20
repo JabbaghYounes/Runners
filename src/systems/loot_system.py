@@ -19,13 +19,22 @@ class LootSystem:
         self._item_db = item_db
         self._loot_items: list = []
         self._pending_drops: list[dict] = []
-        self._loot_tables: dict[str, list[dict]] = {}
+        self._loot_tables: dict[str, dict] = {}
         self._load_loot_tables()
         self._event_bus.subscribe('enemy_killed', self._on_enemy_killed)
         self._event_bus.subscribe('player_killed', self._on_player_killed)
 
     def _load_loot_tables(self) -> None:
-        """Load loot tables from enemies.json and build a named registry."""
+        """Load loot tables from enemies.json and build a named registry.
+
+        Each entry in ``_loot_tables`` is a config dict::
+
+            {
+                "rolls": int,
+                "entries": list[dict],
+                "rarity_weights": dict[str, int],   # may be empty
+            }
+        """
         import json
         from pathlib import Path
         enemies_path = Path("data") / "enemies.json"
@@ -40,20 +49,25 @@ class LootSystem:
             for table_name, table_data in raw_tables.items():
                 entries = table_data.get("entries", [])
                 if entries:
-                    self._loot_tables[table_name] = entries
+                    self._loot_tables[table_name] = {
+                        "rolls": table_data.get("rolls", 1),
+                        "entries": entries,
+                        "rarity_weights": table_data.get("rarity_weights", {}),
+                    }
 
-            # Map enemy type_ids to their loot table entries
+            # Map enemy type_ids to their loot table config
             enemies = data.get("enemies", {})
-            all_items: list[dict] = []
+            all_entries: list[dict] = []
             if isinstance(enemies, dict):
                 for type_id, enemy_data in enemies.items():
                     table_ref = enemy_data.get("loot_table", "")
                     if isinstance(table_ref, str) and table_ref in self._loot_tables:
                         self._loot_tables[type_id] = self._loot_tables[table_ref]
-                        all_items.extend(self._loot_tables[table_ref])
+                        all_entries.extend(self._loot_tables[table_ref]["entries"])
                     elif isinstance(table_ref, list):
-                        self._loot_tables[type_id] = table_ref
-                        all_items.extend(table_ref)
+                        cfg = {"rolls": 1, "entries": table_ref, "rarity_weights": {}}
+                        self._loot_tables[type_id] = cfg
+                        all_entries.extend(table_ref)
             else:
                 # Legacy list format
                 for enemy in enemies:
@@ -61,15 +75,20 @@ class LootSystem:
                     type_id = enemy.get("type_id", "")
                     if isinstance(table, str) and table in self._loot_tables:
                         self._loot_tables[type_id] = self._loot_tables[table]
-                        all_items.extend(self._loot_tables[table])
+                        all_entries.extend(self._loot_tables[table]["entries"])
                     elif isinstance(table, list):
-                        self._loot_tables[type_id] = table
-                        all_items.extend(table)
+                        cfg = {"rolls": 1, "entries": table, "rarity_weights": {}}
+                        self._loot_tables[type_id] = cfg
+                        all_entries.extend(table)
 
-            if all_items:
-                self._loot_tables["default"] = all_items
-        except Exception:
-            pass
+            if all_entries:
+                self._loot_tables["default"] = {
+                    "rolls": 1,
+                    "entries": all_entries,
+                    "rarity_weights": {},
+                }
+        except Exception as exc:
+            print(f"[LootSystem] failed to load loot tables: {exc}")
 
     @property
     def loot_items(self) -> list:
@@ -119,6 +138,17 @@ class LootSystem:
                     spawned.append(loot)
             return spawned
 
+        # If loot_table is a string name, resolve it through roll_loot_table
+        if isinstance(loot_table, str) and loot_table:
+            item_ids = self.roll_loot_table(loot_table)
+            spawned = []
+            for item_id in item_ids:
+                if item_id:
+                    loot = self.spawn_at(item_id, (x, y))
+                    if loot is not None:
+                        spawned.append(loot)
+            return spawned
+
         # If we have an explicit loot_table (list of dicts), use it
         if loot_table:
             self.spawn_loot(x, y, loot_table)
@@ -146,14 +176,36 @@ class LootSystem:
             else:
                 from src.inventory.item_database import ItemDatabase
                 item = ItemDatabase.instance().create(item_id)
-        except (KeyError, Exception):
+        except KeyError:
+            print(f"[LootSystem] skipping unknown item_id={item_id!r}")
+            return None
+        except Exception:
             return None
         loot = LootItem(item, x, y)
         self._loot_items.append(loot)
         return loot
 
+    def spawn_round_loot(self, loot_spawns: list) -> None:
+        """Spawn static map loot at each position in *loot_spawns*.
+
+        Args:
+            loot_spawns: List of ``(x, y)`` world-space positions from the
+                tile map's ``loot_spawns`` attribute.
+        """
+        if self._item_db is None:
+            return
+        item_ids = getattr(self._item_db, 'item_ids', [])
+        if not item_ids:
+            return
+        for pos in loot_spawns:
+            item_id = random.choice(item_ids)
+            self.spawn_at(item_id, pos)
+
     def spawn_loot(self, x: float, y: float, loot_table: list | None = None) -> None:
         table = loot_table if loot_table is not None else self._loot_tables.get("default", _DEFAULT_LOOT_TABLE)
+        # Handle dict format stored by _load_loot_tables
+        if isinstance(table, dict):
+            table = table.get("entries", [])
         if not table:
             return
         item_id = self._weighted_choice(table)
@@ -195,7 +247,6 @@ class LootSystem:
                 self._check_pickup(player, e_key_pressed)
             return []
         else:
-            e_key_pressed = kwargs.get('e_key_pressed', False)
             return []
 
     def _check_pickup(self, player: Any, e_key_pressed: bool) -> None:
@@ -274,7 +325,7 @@ class LootSystem:
         from src.entities.loot_item import LootItem
         return LootItem(item, pos[0], pos[1])
 
-    def _on_player_killed(self, **kwargs: Any) -> None:
+    def _on_player_killed(self, **kwargs: Any) -> list:
         """Drop the victim's inventory items as world loot on PvP kill."""
         killer = kwargs.get('killer')
         victim = kwargs.get('victim')
@@ -311,6 +362,7 @@ class LootSystem:
             lx = cx + dx
             ly = cy + dy
             loot = LootItem(item, lx, ly)
+            self._loot_items.append(loot)  # register in world list
             spawned.append(loot)
 
         # Clear victim's inventory
@@ -319,7 +371,17 @@ class LootSystem:
 
         return spawned
 
+    def despawn_all(self) -> None:
+        """Mark all live loot items as dead and clear the world list.
+
+        Called when the round ends so unpicked loot does not carry over.
+        """
+        for loot in self._loot_items:
+            loot.alive = False
+        self._loot_items.clear()
+
     def teardown(self) -> None:
+        self.despawn_all()
         self._event_bus.unsubscribe('enemy_killed', self._on_enemy_killed)
         try:
             self._event_bus.unsubscribe('player_killed', self._on_player_killed)
@@ -334,17 +396,58 @@ class LootSystem:
         weights = [entry.get('weight', 1) for entry in table]
         return random.choices(item_ids, weights=weights, k=1)[0]
 
-    def roll_loot_table(self, table) -> list:
-        """Roll on a loot table.
+    @staticmethod
+    def _weighted_rarity_choice(entries: list, rarity_weights: dict) -> Any:
+        """Two-stage weighted choice: pick a rarity tier, then an item from that tier.
+
+        Falls back to flat weighted choice when no entries match the chosen rarity.
+        """
+        tiers = list(rarity_weights.keys())
+        weights = [rarity_weights[t] for t in tiers]
+        if not any(w > 0 for w in weights):
+            return LootSystem._weighted_choice(entries)
+        chosen_rarity = random.choices(tiers, weights=weights, k=1)[0]
+        tier_entries = [e for e in entries if e.get("rarity") == chosen_rarity]
+        if not tier_entries:
+            # No entries for that rarity tier — fall back to flat choice
+            return LootSystem._weighted_choice(entries)
+        return LootSystem._weighted_choice(tier_entries)
+
+    def roll_loot_table(self, table: Any) -> list:
+        """Roll on a loot table and return a list of item ID strings.
 
         Args:
-            table: either a string table name or a list of dicts.
+            table: A string table name, a list of entry dicts (legacy),
+                   or a full config dict ``{rolls, entries, rarity_weights}``.
+
+        Returns:
+            List of item_id strings, one per roll.
         """
         if isinstance(table, str):
-            table_data = self._loot_tables.get(table, _DEFAULT_LOOT_TABLE)
+            table_config = self._loot_tables.get(table)
+            if not table_config:
+                return []
+        elif isinstance(table, dict):
+            table_config = table
+        elif isinstance(table, list):
+            # Legacy: flat list of entry dicts → treat as single-roll table
+            table_config = {"rolls": 1, "entries": table, "rarity_weights": {}}
         else:
-            table_data = table
-        if not table_data:
             return []
-        result = self._weighted_choice(table_data)
-        return [result] if result else []
+
+        entries = table_config.get("entries", [])
+        rolls = int(table_config.get("rolls", 1))
+        rarity_weights = table_config.get("rarity_weights", {})
+
+        if not entries:
+            return []
+
+        results: list[str] = []
+        for _ in range(rolls):
+            if rarity_weights:
+                item_id = self._weighted_rarity_choice(entries, rarity_weights)
+            else:
+                item_id = self._weighted_choice(entries)
+            if item_id is not None:
+                results.append(item_id)
+        return results

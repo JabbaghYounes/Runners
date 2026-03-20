@@ -61,8 +61,10 @@ class GameScene(BaseScene):
         # Loot value bonus from home base
         self.loot_value_bonus: float = 0.0
 
-        # SpawnSystem reference retained for teardown in on_exit().
-        self._spawn_sys: Any = None
+        # Loot system — initialised to None; set by _init_full.
+        # _loot_items_fallback is used by the loot_items property in stub mode.
+        self._loot_sys: Optional[Any] = None
+        self._loot_items_fallback: list = []
 
         # Try to load the full map-based setup when a scene manager is provided.
         self._full_init = False
@@ -143,7 +145,18 @@ class GameScene(BaseScene):
             self._loot_sys = LootSystem(self._event_bus, self._item_db)
         except Exception:
             self._loot_sys = None
+
+        # Spawn static map loot through LootSystem so it owns all items from the start
+        try:
+            if self._loot_sys is not None:
+                self._loot_sys.spawn_round_loot(self.tile_map.loot_spawns)
+        except Exception:
+            pass
         self._buff = BuffSystem()
+        self.player.set_buff_system(self._buff)
+
+        # Kill counter (for RoundSummary)
+        self._kill_count: int = 0
 
         # Challenge system
         try:
@@ -158,6 +171,14 @@ class GameScene(BaseScene):
             self._audio_sys = AudioSystem(self._event_bus, self._assets)
         except Exception:
             self._audio_sys = None
+
+        # Extraction zone — stored separately for rendering.
+        try:
+            from src.map.extraction_zone import ExtractionZone
+            _ext_rect = self.tile_map.extraction_rect or pygame.Rect(0, 0, 32, 32)
+            self._extraction_zone = ExtractionZone(rect=_ext_rect)
+        except Exception:
+            self._extraction_zone = None
 
         # Extraction system
         try:
@@ -216,6 +237,10 @@ class GameScene(BaseScene):
         self._event_bus.subscribe('extraction_failed', self._on_extract_failed)
         self._event_bus.subscribe('round_end', self._on_round_end)
 
+        # Round timer (started in on_enter to align with scene lifecycle)
+        from src.systems.round_timer import RoundTimer
+        self._round_timer = RoundTimer(self._event_bus)
+
         self._full_init = True
 
     def _init_stub(self, zones_override):
@@ -244,6 +269,8 @@ class GameScene(BaseScene):
         if not hasattr(self, '_audio_sys'):
             self._audio_sys = None
 
+        self._round_timer = None
+
         # Apply home base bonuses in stub mode too
         if self._home_base is not None:
             self._apply_home_base_bonuses(self.player, self._home_base)
@@ -251,6 +278,25 @@ class GameScene(BaseScene):
         # Apply skill tree bonuses in stub mode too
         if self._skill_tree is not None:
             self._apply_skill_tree_bonuses(self.player, self._skill_tree)
+
+    # ------------------------------------------------------------------
+    # loot_items property — unified accessor for both full and stub mode
+    # ------------------------------------------------------------------
+
+    @property
+    def loot_items(self) -> list:
+        """Return live loot items: from LootSystem in full mode, fallback list in stub."""
+        if self._loot_sys is not None:
+            return self._loot_sys.loot_items
+        return self._loot_items_fallback
+
+    @loot_items.setter
+    def loot_items(self, value: list) -> None:
+        """Allow direct assignment in stub mode (e.g., ``self.loot_items = []``)."""
+        if self._loot_sys is not None:
+            # In full mode loot is owned by LootSystem — ignore external assignment
+            return
+        self._loot_items_fallback = value
 
     # ------------------------------------------------------------------
     # _apply_home_base_bonuses — tested as an unbound method call
@@ -391,11 +437,15 @@ class GameScene(BaseScene):
             self._update_stub(dt)
 
     def _update_full(self, dt: float) -> None:
+        self._pulse_time += dt
         try:
+            from src.constants import KEY_EXTRACT
             keys = pygame.key.get_pressed()
             self._e_held = bool(keys[pygame.K_e])
+            self._extract_held = bool(keys[KEY_EXTRACT])
         except Exception:
             self._e_held = False
+            self._extract_held = False
 
         # Round timer
         if self._round_timer:
@@ -449,9 +499,7 @@ class GameScene(BaseScene):
         # Loot
         if self._loot_sys:
             try:
-                new_drops = self._loot_sys.update(self._e_held, self.loot_items, [self.player])
-                if new_drops:
-                    self.loot_items.extend(new_drops)
+                self._loot_sys.update(self.player, e_key_pressed=self._e_held)
             except Exception:
                 pass
         for li in self.loot_items:
@@ -508,6 +556,10 @@ class GameScene(BaseScene):
                 self._hud.update(self._build_hud_state(), dt)
             except Exception:
                 pass
+
+        # Round timer
+        if self._round_timer:
+            self._round_timer.update(dt)
 
         # Audio forwarding
         if self._audio is not None:
@@ -745,6 +797,7 @@ class GameScene(BaseScene):
     # ------------------------------------------------------------------
 
     def _on_enemy_killed(self, **kwargs: Any) -> None:
+        self._kill_count = getattr(self, '_kill_count', 0) + 1
         xp = kwargs.get('xp_reward', 0)
         if self._xp_system and xp:
             old_level = self._xp_system.level
@@ -752,29 +805,72 @@ class GameScene(BaseScene):
             if self._xp_system.level > old_level:
                 self._event_bus.emit('level.up', level=self._xp_system.level)
 
+    def _collect_loot(self) -> list:
+        """Return the player's current inventory items as a list."""
+        loot: list = []
+        if hasattr(self.player, 'inventory'):
+            inv = self.player.inventory
+            if hasattr(inv, 'get_items'):
+                loot = list(inv.get_items())
+            elif isinstance(inv, list):
+                loot = list(inv)
+        return loot
+
+    def _build_post_round(
+        self,
+        status: str,
+        loot: list,
+        challenge_system: object,
+    ) -> "PostRound":
+        """Construct a PostRound instance with a full RoundSummary."""
+        from src.scenes.post_round import PostRound
+        from src.save.save_manager import SaveManager
+        from src.core.round_summary import RoundSummary
+        from src.constants import EXTRACTION_XP
+
+        save_mgr = SaveManager(_path('saves', 'save.json'))
+        level_before = self._xp_system.level if self._xp_system else 1
+
+        completed_count = 0
+        total_count = 0
+        if challenge_system is not None:
+            try:
+                completed_count = len(challenge_system.get_completed_challenges())
+                total_count = len(challenge_system.get_active_raw())
+            except Exception:
+                pass
+
+        xp_earned = EXTRACTION_XP if status == "success" else 0
+        summary = RoundSummary(
+            extraction_status=status,
+            extracted_items=list(loot),
+            xp_earned=xp_earned,
+            money_earned=0,
+            kills=getattr(self, '_kill_count', 0),
+            challenges_completed=completed_count,
+            challenges_total=total_count,
+            level_before=level_before,
+        )
+
+        return PostRound(
+            summary=summary,
+            xp_system=self._xp_system,
+            currency=self._currency,
+            save_manager=save_mgr,
+            scene_manager=self._sm,
+            audio_system=getattr(self, '_audio_sys', None),
+            challenge_system=challenge_system,
+        )
+
     def _on_extract(self, **kwargs: Any) -> None:
         """Extraction succeeded -- push PostRound."""
         if self._transitioning:
             return
         self._transitioning = True
         try:
-            from src.scenes.post_round import PostRound
-            from src.save.save_manager import SaveManager
-            save_mgr = SaveManager(_path('saves', 'save.json'))
-            loot = []
-            if hasattr(self.player, 'inventory'):
-                inv = self.player.inventory
-                if hasattr(inv, 'get_items'):
-                    loot = list(inv.get_items())
-                elif isinstance(inv, list):
-                    loot = list(inv)
-            self._sm.replace(PostRound(
-                sm=self._sm, settings=self._settings, assets=self._assets,
-                xp_system=self._xp_system, currency=self._currency,
-                save_manager=save_mgr,
-                extracted=True,
-                loot_items=loot,
-            ))
+            self._sm.replace(
+                self._build_post_round("success", self._collect_loot(), self._challenge)
+            )
         except Exception as e:
             print(f"[GameScene] PostRound push failed: {e}")
 
@@ -783,23 +879,9 @@ class GameScene(BaseScene):
             return
         self._transitioning = True
         try:
-            from src.scenes.post_round import PostRound
-            from src.save.save_manager import SaveManager
-            save_mgr = SaveManager(_path('saves', 'save.json'))
-            loot = []
-            if hasattr(self.player, 'inventory'):
-                inv = self.player.inventory
-                if hasattr(inv, 'get_items'):
-                    loot = list(inv.get_items())
-                elif isinstance(inv, list):
-                    loot = list(inv)
-            self._sm.replace(PostRound(
-                sm=self._sm, settings=self._settings, assets=self._assets,
-                xp_system=self._xp_system, currency=self._currency,
-                save_manager=save_mgr,
-                extracted=False,
-                loot_items=loot,
-            ))
+            self._sm.replace(
+                self._build_post_round("timeout", [], self._challenge)
+            )
         except Exception as e:
             print(f"[GameScene] PostRound push failed: {e}")
 
@@ -808,16 +890,9 @@ class GameScene(BaseScene):
             return
         self._transitioning = True
         try:
-            from src.scenes.post_round import PostRound
-            from src.save.save_manager import SaveManager
-            save_mgr = SaveManager(_path('saves', 'save.json'))
-            self._sm.replace(PostRound(
-                sm=self._sm, settings=self._settings, assets=self._assets,
-                xp_system=self._xp_system, currency=self._currency,
-                save_manager=save_mgr,
-                extracted=False,
-                loot_items=[],
-            ))
+            self._sm.replace(
+                self._build_post_round("eliminated", [], None)
+            )
         except Exception as e:
             print(f"[GameScene] PostRound push failed: {e}")
 
@@ -828,6 +903,9 @@ class GameScene(BaseScene):
     def _push_pause(self) -> None:
         try:
             from src.scenes.pause_menu import PauseMenu
+            # Guard against rapid double-ESC stacking two PauseMenus
+            if isinstance(self._sm.active, PauseMenu):
+                return
             self._sm.push(PauseMenu(self._sm, self._settings, self._assets))
         except Exception as e:
             print(f"[GameScene] PauseMenu push failed: {e}")
