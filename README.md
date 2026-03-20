@@ -79,7 +79,7 @@ Runners/
 │   ├── scenes/              # Game scene, menus, home base, post-round
 │   ├── systems/             # AI, audio, combat, physics, shooting, challenges
 │   └── ui/                  # HUD, mini-map, widgets
-├── tests/                   # Pytest test suite (2369 tests)
+├── tests/                   # Pytest test suite (4615 tests)
 └── claude-hive/             # AI swarm toolkit (PRD → features → PRs)
 ```
 
