@@ -80,7 +80,7 @@ Runners/
 │   ├── systems/             # AI, audio, combat, physics, shooting, challenges
 │   └── ui/                  # HUD, mini-map, widgets
 ├── tests/                   # Pytest test suite (2369 tests)
-└── ricky/                   # AI swarm toolkit (PRD → features → PRs)
+└── claude-hive/             # AI swarm toolkit (PRD → features → PRs)
 ```
 
 ## Running Tests
