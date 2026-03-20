@@ -244,8 +244,10 @@ class Inventory:
 
         Existing items are cleared before loading.  Each dict is passed
         through ``make_item()`` to reconstruct the correct Item subclass.
+        Weapon dicts that include an ``attachments`` key have their
+        attachments re-equipped via ``weapon_from_save_dict()``.
         """
-        from src.inventory.item import make_item
+        from src.inventory.item import Weapon, make_item
 
         self.clear()
         for item_data in data:
@@ -253,6 +255,17 @@ class Inventory:
                 continue
             try:
                 item = make_item(item_data)
+                # Rebuild attachments when the saved dict carries them.
+                if (
+                    isinstance(item, Weapon)
+                    and "attachments" in item_data
+                    and isinstance(item_data["attachments"], dict)
+                ):
+                    from src.inventory.weapon_attachments import weapon_from_save_dict
+                    restored_atts = weapon_from_save_dict(item_data)
+                    for slot_type, att in restored_atts.items():
+                        if slot_type in item.mod_slots:
+                            item.attachments[slot_type] = att
                 # Bypass weight check for saved items -- they were valid when saved
                 for i, slot in enumerate(self._slots):
                     if slot is None:

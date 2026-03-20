@@ -1,5 +1,5 @@
 {
-  "_comment": "Skill tree node graph. Schema: id, branch, cost_xp, cost_money, prerequisites[], stat_bonuses{}.",
+  "_comment": "Skill tree node graph. Schema: id, branch, cost_sp (skill points), prerequisites[], stat_bonuses{}.",
   "branches": ["combat", "mobility"],
   "nodes": [
     {
@@ -7,7 +7,7 @@
       "name": "Steady Aim",
       "branch": "combat",
       "description": "+10% weapon damage",
-      "cost_money": 200,
+      "cost_sp": 1,
       "requires": [],
       "stat_bonus": {"damage_mult": 0.10}
     },
@@ -16,7 +16,7 @@
       "name": "Armored Up",
       "branch": "combat",
       "description": "+15 starting armor",
-      "cost_money": 400,
+      "cost_sp": 1,
       "requires": ["combat_1"],
       "stat_bonus": {"extra_armor": 15}
     },
@@ -25,7 +25,7 @@
       "name": "Lethal Precision",
       "branch": "combat",
       "description": "+20% weapon damage",
-      "cost_money": 800,
+      "cost_sp": 1,
       "requires": ["combat_2"],
       "stat_bonus": {"damage_mult": 0.20}
     },
@@ -34,7 +34,7 @@
       "name": "Heavy Hitter",
       "branch": "combat",
       "description": "+10% crit chance",
-      "cost_money": 1200,
+      "cost_sp": 1,
       "requires": ["combat_3"],
       "stat_bonus": {"crit_chance": 0.10}
     },
@@ -43,7 +43,7 @@
       "name": "Light Feet",
       "branch": "mobility",
       "description": "+10% movement speed",
-      "cost_money": 200,
+      "cost_sp": 1,
       "requires": [],
       "stat_bonus": {"speed_mult": 0.10}
     },
@@ -52,7 +52,7 @@
       "name": "Quick Recovery",
       "branch": "mobility",
       "description": "+15 max HP",
-      "cost_money": 400,
+      "cost_sp": 1,
       "requires": ["mobility_1"],
       "stat_bonus": {"extra_hp": 15}
     },
@@ -61,7 +61,7 @@
       "name": "Sprint Master",
       "branch": "mobility",
       "description": "+20% movement speed",
-      "cost_money": 800,
+      "cost_sp": 1,
       "requires": ["mobility_2"],
       "stat_bonus": {"speed_mult": 0.20}
     },
@@ -70,7 +70,7 @@
       "name": "Evasion Expert",
       "branch": "mobility",
       "description": "+10% dodge chance",
-      "cost_money": 1200,
+      "cost_sp": 1,
       "requires": ["mobility_3"],
       "stat_bonus": {"dodge_chance": 0.10}
     }

@@ -1,20 +1,20 @@
 from __future__ import annotations
 
-import json
 import math
-from typing import List, Optional, Tuple
+import json
+from typing import List, Tuple, Optional
 
 import pygame
 
-from src.constants import ACCENT_GREEN, BG_MID, BORDER_BRIGHT, BORDER_DIM, TILE_SIZE
 from src.map.zone import Zone
 
 TILE_AIR = 0
 TILE_SOLID = 1
 TILE_EXTRACTION = 2
 
+
 class TileMap:
-    def __init__(self):
+    def __init__(self) -> None:
         self.tile_size: int = TILE_SIZE
         self.tiles: List[List[int]] = []
         self.width: int = 0
@@ -26,13 +26,15 @@ class TileMap:
         self.player_spawn: Tuple[float, float] = (96.0, 832.0)
         self.loot_spawns: List[Tuple[float, float]] = []
         self._tick: float = 0.0
+        self.baked_minimap: Optional[pygame.Surface] = None
 
     @classmethod
-    def load(cls, path: str) -> 'TileMap':
+    def load(cls, path: str) -> TileMap:
         tm = cls()
         with open(path, 'r') as f:
             data = json.load(f)
         tm.tile_size = data.get('tile_size', TILE_SIZE)
+        # 'tiles' is mandatory -- raise KeyError if absent
         tm.tiles = data['tiles']
         tm.height = len(tm.tiles)
         tm.width = len(tm.tiles[0]) if tm.height > 0 else 0
@@ -52,22 +54,44 @@ class TileMap:
 
         er = data.get('extraction_rect', [0, 0, 32, 32])
         tm.extraction_rect = pygame.Rect(er[0], er[1], er[2], er[3])
-        tm.loot_spawns = [(float(p[0]), float(p[1])) for p in data.get('loot_spawns', [])]
+        tm.loot_spawns = [
+            (float(p[0]), float(p[1]))
+            for p in data.get('loot_spawns', [])
+        ]
         for zd in data.get('zones', []):
             r = zd['rect']
             zone = Zone(
                 name=zd['name'],
                 rect=pygame.Rect(r[0], r[1], r[2], r[3]),
-                spawn_points=[(float(p[0]), float(p[1])) for p in zd.get('spawn_points', [])],
+                spawn_points=[
+                    (float(p[0]), float(p[1]))
+                    for p in zd.get('spawn_points', [])
+                ],
                 music_track=zd.get('music_track'),
                 enemy_spawns=zd.get('enemy_spawns', []),
-                pvp_bot_spawns=[
-                    (float(p[0]), float(p[1]))
-                    for p in zd.get('pvp_bot_spawns', [])
-                ],
+                color=tuple(zd.get('color', [60, 120, 180])),
             )
             tm.zones.append(zone)
+        tm.baked_minimap = tm._bake_minimap()
         return tm
+
+    def _bake_minimap(self) -> Optional[pygame.Surface]:
+        """Return a 1-px-per-tile Surface for the mini-map tile layer.
+
+        Returns None when the map has zero dimensions (e.g. empty test maps).
+        """
+        if self.width == 0 or self.height == 0:
+            return None
+        surf = pygame.Surface((self.width, self.height))
+        surf.fill((6, 10, 18))  # TILE_AIR background
+        for row in range(self.height):
+            for col in range(self.width):
+                tile = self.tiles[row][col]
+                if tile == TILE_SOLID:
+                    surf.set_at((col, row), (35, 50, 70))
+                elif tile == TILE_EXTRACTION:
+                    surf.set_at((col, row), (0, 200, 80))
+        return surf
 
     def is_solid(self, tx: int, ty: int) -> bool:
         if tx < 0 or ty < 0 or ty >= self.height or tx >= self.width:
@@ -89,9 +113,9 @@ class TileMap:
     def update(self, dt: float) -> None:
         self._tick += dt
 
-    def render(self, screen: pygame.Surface, camera) -> None:
+    def render(self, screen: pygame.Surface, camera: object) -> None:
         ts = self.tile_size
-        ox, oy = camera.offset
+        ox, oy = camera.offset  # type: ignore[attr-defined]
         # Visible tile range
         col_start = max(0, ox // ts)
         col_end = min(self.width, (ox + screen.get_width()) // ts + 2)
@@ -105,7 +129,7 @@ class TileMap:
                 tile = self.tiles[row][col]
                 if tile == TILE_AIR:
                     continue
-                sx, sy = camera.world_to_screen(col * ts, row * ts)
+                sx, sy = camera.world_to_screen(col * ts, row * ts)  # type: ignore[attr-defined]
                 draw_rect = pygame.Rect(sx, sy, ts, ts)
                 if tile == TILE_SOLID:
                     pygame.draw.rect(screen, (35, 50, 70), draw_rect)

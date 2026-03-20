@@ -1,11 +1,18 @@
 """
 Unit tests for the Item model hierarchy — src/inventory/item.py
 
+# Run: pytest tests/test_item_model.py
+
 Covers:
   - Rarity enum (five tiers, expected names)
+  - Rarity.from_str() normalisation
   - Item.monetary_value property (correct calculation, ordering, scaling)
+  - RARITY_DEFAULT_VALUES fallback when explicit value is absent or zero
+  - Item.get_stat() helper
+  - Item.to_save_dict() serialisation
   - Weapon / Armor / Consumable / Attachment subclass fields
-  - RARITY_VALUE_MULTIPLIERS constant from src/core/constants.py
+  - RARITY_VALUE_MULTIPLIERS constant
+  - make_item() factory — dict-based and positional call conventions
 """
 import pytest
 
@@ -360,3 +367,230 @@ class TestAttachment:
     def test_attachment_inherits_weight(self):
         a = _attachment()
         assert a.weight == pytest.approx(0.3)
+
+
+# ---------------------------------------------------------------------------
+# Rarity.from_str()
+# ---------------------------------------------------------------------------
+
+class TestRarityFromStr:
+    def test_from_str_lowercase_common(self):
+        assert Rarity.from_str("common") == Rarity.COMMON
+
+    def test_from_str_uppercase_LEGENDARY(self):
+        assert Rarity.from_str("LEGENDARY") == Rarity.LEGENDARY
+
+    def test_from_str_mixed_case_Rare(self):
+        assert Rarity.from_str("Rare") == Rarity.RARE
+
+    def test_from_str_unknown_falls_back_to_common(self):
+        result = Rarity.from_str("not_a_real_rarity_xyz")
+        assert result == Rarity.COMMON
+
+    def test_from_str_empty_string_falls_back_to_common(self):
+        result = Rarity.from_str("")
+        assert result == Rarity.COMMON
+
+    def test_from_str_epic_lowercase(self):
+        assert Rarity.from_str("epic") == Rarity.EPIC
+
+    def test_from_str_uncommon_lowercase(self):
+        assert Rarity.from_str("uncommon") == Rarity.UNCOMMON
+
+
+# ---------------------------------------------------------------------------
+# RARITY_DEFAULT_VALUES — fallback when value is zero or absent
+# ---------------------------------------------------------------------------
+
+class TestRarityDefaultValues:
+    def test_zero_explicit_value_uses_rarity_fallback(self):
+        """An item constructed with value=0 must have monetary_value > 0 from the fallback."""
+        from src.inventory.item import RARITY_DEFAULT_VALUES
+        item = Item(item_id="x", name="x", item_type="item",
+                    rarity=Rarity.COMMON, value=0)
+        # The fallback for COMMON is 100; monetary_value = 100 * 1.0 = 100
+        expected = RARITY_DEFAULT_VALUES["common"] * 1.0
+        assert item.monetary_value == pytest.approx(expected)
+
+    def test_legendary_fallback_greater_than_common_fallback(self):
+        from src.inventory.item import RARITY_DEFAULT_VALUES
+        common_val = RARITY_DEFAULT_VALUES["common"]
+        legend_val = RARITY_DEFAULT_VALUES["legendary"]
+        assert legend_val > common_val
+
+    def test_default_values_defined_for_all_rarity_tiers(self):
+        from src.inventory.item import RARITY_DEFAULT_VALUES, RARITY_ORDER
+        for rarity_str in RARITY_ORDER:
+            assert rarity_str in RARITY_DEFAULT_VALUES, (
+                f"RARITY_DEFAULT_VALUES missing entry for {rarity_str!r}"
+            )
+
+    def test_all_default_values_are_positive(self):
+        from src.inventory.item import RARITY_DEFAULT_VALUES
+        for k, v in RARITY_DEFAULT_VALUES.items():
+            assert v > 0, f"Default value for {k!r} must be positive"
+
+    def test_explicit_positive_value_overrides_fallback(self):
+        item = Item(item_id="x", name="x", item_type="item",
+                    rarity=Rarity.COMMON, value=999)
+        assert item.value == 999
+
+
+# ---------------------------------------------------------------------------
+# Item.get_stat()
+# ---------------------------------------------------------------------------
+
+class TestGetStat:
+    def test_get_stat_returns_value_when_key_present(self):
+        item = Item(item_id="x", name="x", item_type="item",
+                    rarity=Rarity.COMMON, stats={"armor": 15})
+        assert item.get_stat("armor") == 15
+
+    def test_get_stat_returns_default_when_key_absent(self):
+        item = Item(item_id="x", name="x", item_type="item",
+                    rarity=Rarity.COMMON, stats={})
+        assert item.get_stat("missing_key") == 0
+
+    def test_get_stat_returns_custom_default_when_key_absent(self):
+        item = Item(item_id="x", name="x", item_type="item",
+                    rarity=Rarity.COMMON, stats={})
+        assert item.get_stat("missing_key", default=-1) == -1
+
+    def test_get_stat_with_float_value(self):
+        item = Item(item_id="x", name="x", item_type="item",
+                    rarity=Rarity.COMMON, stats={"accuracy": 0.85})
+        assert item.get_stat("accuracy") == pytest.approx(0.85)
+
+
+# ---------------------------------------------------------------------------
+# Item.to_save_dict()
+# ---------------------------------------------------------------------------
+
+class TestToSaveDict:
+    def test_to_save_dict_returns_dict(self):
+        assert isinstance(_weapon().to_save_dict(), dict)
+
+    def test_to_save_dict_contains_item_id(self):
+        d = _weapon(id="pistol_01").to_save_dict()
+        assert d["item_id"] == "pistol_01"
+
+    def test_to_save_dict_contains_name(self):
+        d = _weapon().to_save_dict()
+        assert d["name"] == "Test Pistol"
+
+    def test_to_save_dict_contains_item_type(self):
+        d = _weapon().to_save_dict()
+        assert d["item_type"] == "weapon"
+
+    def test_to_save_dict_contains_rarity_as_string(self):
+        d = _weapon(rarity=Rarity.EPIC).to_save_dict()
+        assert isinstance(d["rarity"], str)
+        assert d["rarity"].lower() == "epic"
+
+    def test_to_save_dict_contains_weight(self):
+        d = _weapon(weight=2.5).to_save_dict()
+        assert d["weight"] == pytest.approx(2.5)
+
+    def test_to_save_dict_contains_stats(self):
+        d = _weapon(stats={"accuracy": 0.9}).to_save_dict()
+        assert d["stats"].get("accuracy") == pytest.approx(0.9)
+
+    def test_to_save_dict_contains_quantity(self):
+        from src.inventory.item import Item
+        item = Item(item_id="x", name="x", item_type="item",
+                    rarity=Rarity.COMMON, quantity=3)
+        assert item.to_save_dict()["quantity"] == 3
+
+    def test_armor_to_save_dict_contains_item_type_armor(self):
+        d = _armor().to_save_dict()
+        assert d["item_type"] == "armor"
+
+
+# ---------------------------------------------------------------------------
+# make_item() factory — dict-based call convention
+# ---------------------------------------------------------------------------
+
+class TestMakeItemDictConvention:
+    def test_make_item_weapon_dict_returns_weapon(self):
+        from src.inventory.item import make_item, Weapon
+        data = {
+            "item_id": "smg_01", "name": "SMG", "item_type": "weapon",
+            "rarity": "UNCOMMON", "weight": 2.0, "value": 300,
+            "stats": {}, "sprite": "", "damage": 20, "fire_rate": 8,
+            "magazine_size": 25, "mod_slots": [],
+        }
+        item = make_item(data)
+        assert isinstance(item, Weapon)
+
+    def test_make_item_armor_dict_returns_armor(self):
+        from src.inventory.item import make_item, Armor
+        data = {
+            "item_id": "vest_01", "name": "Vest", "item_type": "armor",
+            "rarity": "COMMON", "weight": 3.0, "value": 150,
+            "stats": {}, "sprite": "",
+        }
+        item = make_item(data)
+        assert isinstance(item, Armor)
+
+    def test_make_item_consumable_dict_returns_consumable(self):
+        from src.inventory.item import make_item, Consumable
+        data = {
+            "item_id": "kit_01", "name": "Kit", "item_type": "consumable",
+            "rarity": "COMMON", "weight": 0.5, "value": 50,
+            "stats": {}, "sprite": "",
+        }
+        item = make_item(data)
+        assert isinstance(item, Consumable)
+
+    def test_make_item_attachment_dict_returns_attachment(self):
+        from src.inventory.item import make_item, Attachment
+        data = {
+            "item_id": "scope_01", "name": "Scope", "item_type": "attachment",
+            "rarity": "RARE", "weight": 0.3, "value": 200,
+            "stats": {}, "sprite": "",
+        }
+        item = make_item(data)
+        assert isinstance(item, Attachment)
+
+    def test_make_item_unknown_type_dict_returns_base_item(self):
+        from src.inventory.item import make_item, Item
+        data = {
+            "item_id": "misc_01", "name": "Misc", "item_type": "misc",
+            "rarity": "COMMON", "weight": 0.1, "value": 10,
+            "stats": {}, "sprite": "",
+        }
+        item = make_item(data)
+        assert isinstance(item, Item)
+
+    def test_make_item_dict_preserves_name(self):
+        from src.inventory.item import make_item
+        item = make_item({"item_id": "x", "name": "Elite Rifle",
+                          "item_type": "weapon", "rarity": "LEGENDARY",
+                          "weight": 4.0, "value": 2000, "stats": {}, "sprite": ""})
+        assert item.name == "Elite Rifle"
+
+
+# ---------------------------------------------------------------------------
+# make_item() factory — positional / keyword call convention
+# ---------------------------------------------------------------------------
+
+class TestMakeItemPositionalConvention:
+    def test_make_item_weapon_positional_returns_weapon(self):
+        from src.inventory.item import make_item, Weapon
+        item = make_item("rifle_01", "Rifle", "weapon", "rare", 500, 3.5, "")
+        assert isinstance(item, Weapon)
+
+    def test_make_item_armor_positional_returns_armor(self):
+        from src.inventory.item import make_item, Armor
+        item = make_item("vest_01", "Vest", "armor", "common", 150, 3.0, "")
+        assert isinstance(item, Armor)
+
+    def test_make_item_positional_preserves_id(self):
+        from src.inventory.item import make_item
+        item = make_item("my_weapon_id", "Gun", "weapon", "common", 100, 1.5, "")
+        assert item.item_id == "my_weapon_id"
+
+    def test_make_item_positional_preserves_rarity(self):
+        from src.inventory.item import make_item
+        item = make_item("x", "X", "armor", "epic", 1000, 2.0, "")
+        assert item.rarity == Rarity.EPIC
