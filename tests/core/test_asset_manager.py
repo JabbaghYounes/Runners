@@ -219,3 +219,36 @@ class TestClearCache:
         """clear_cache must be safe to call even with an empty cache."""
         fresh = AssetManager()
         fresh.clear_cache()  # should not raise
+
+
+# ── sound failure-set tracking ────────────────────────────────────────────────
+
+
+class TestSoundFailureTracking:
+    """Failed sound paths must be remembered so repeated load attempts are cheap."""
+
+    def setup_method(self):
+        self.am = AssetManager()
+
+    def test_missing_sound_path_is_added_to_failure_set(self):
+        """A path that fails to load must appear in _sound_failures."""
+        self.am.set_audio_available(True)
+        self.am.load_sound("nonexistent/bang.wav")
+        assert "nonexistent/bang.wav" in self.am._sound_failures
+
+    def test_failed_path_short_circuits_on_next_call(self):
+        """Second load of a failed path returns None via the failure-set fast path."""
+        self.am.set_audio_available(True)
+        # First call — triggers the failure and logs the path
+        self.am.load_sound("nonexistent/beep.wav")
+        # Second call — must return None without re-attempting the filesystem hit
+        result = self.am.load_sound("nonexistent/beep.wav")
+        assert result is None
+
+    def test_clear_cache_resets_sound_failures_set(self):
+        """clear_cache must wipe _sound_failures so paths can be re-tried."""
+        self.am.set_audio_available(True)
+        self.am.load_sound("nonexistent/sound.wav")
+        assert len(self.am._sound_failures) > 0
+        self.am.clear_cache()
+        assert len(self.am._sound_failures) == 0

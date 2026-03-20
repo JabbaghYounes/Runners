@@ -15,11 +15,34 @@ class AIState(Enum):
     DEAD = auto()
 
 
+# Map FSM state → animation key used by AnimationController
+_STATE_ANIM_KEY: dict[AIState, str] = {
+    AIState.PATROL: "patrol",
+    AIState.AGGRO:  "aggro",
+    AIState.ATTACK: "attack",
+    AIState.DEAD:   "dead",
+}
+
+
 class RobotEnemy(Entity):
     """Humanoid robot enemy driven by the AISystem.
 
     Accepts keyword-only configuration so that each enemy type (grunt, elite,
     heavy, etc.) can be spawned with different stats from the enemy database.
+
+    Coordinate contract
+    -------------------
+    ``x`` / ``y`` are properties backed by ``_float_x`` / ``_float_y``.
+    Every write also updates ``rect.x`` / ``rect.y`` (int).  After
+    ``PhysicsSystem`` resolves gravity and tile collisions (which moves
+    ``rect`` directly), call ``sync_from_rect()`` to pull the corrected
+    integer position back into the float backing fields.
+
+    Ordering per frame::
+
+        PhysicsSystem.update(...)     # writes rect
+        enemy.update(dt)              # sync_from_rect → advance animation
+        AISystem.update(...)          # reads/writes enemy.x via property
     """
 
     def __init__(
@@ -41,7 +64,13 @@ class RobotEnemy(Entity):
         height: int = 48,
         **kwargs: Any,
     ) -> None:
-        super().__init__(x, y, width, height)
+        # Initialise float backing fields BEFORE super().__init__ so the
+        # x/y property setters work even if super() were to call them.
+        self._float_x: float = float(x)
+        self._float_y: float = float(y)
+
+        super().__init__(x, y, width, height)  # sets self.rect
+
         self.type_id: str = type_id
         self.hp: int = hp
         self.max_hp: int = hp
@@ -54,7 +83,10 @@ class RobotEnemy(Entity):
         self.attack_cooldown: float = attack_cooldown
         self.xp_reward: int = xp_reward
         self.loot_table: List[Dict[str, Any]] = loot_table or []
-        self.patrol_waypoints: List[Tuple[float, float]] = patrol_waypoints if patrol_waypoints is not None else [(float(x), float(y))]
+        self.patrol_waypoints: List[Tuple[float, float]] = (
+            patrol_waypoints if patrol_waypoints is not None
+            else [(float(x), float(y))]
+        )
 
         # Faction tag (used by CombatSystem for damage routing)
         self.faction: Faction = Faction.ENEMY
@@ -82,17 +114,73 @@ class RobotEnemy(Entity):
         self._death_anim_duration: float = 0.6
         self._death_event_emitted: bool = False
 
-        # Physics state
+        # Physics state (PhysicsSystem reads target_vx and writes vx/vy/on_ground)
         self.vx: float = 0.0
         self.vy: float = 0.0
         self.on_ground: bool = False
+        self.target_vx: float = 0.0   # intent velocity read by PhysicsSystem
         self._anim_timer: float = 0.0
 
-        # x, y direct access (for tests that use robot.x / robot.y)
-        self.x: float = x
-        self.y: float = y
+        # Explicit width/height for callers that access them as attributes
         self.width: int = width
         self.height: int = height
+
+    # ------------------------------------------------------------------
+    # x / y properties — delegate to rect with float accumulation
+    # ------------------------------------------------------------------
+
+    @property
+    def x(self) -> float:
+        return self._float_x
+
+    @x.setter
+    def x(self, v: float) -> None:
+        self._float_x = float(v)
+        self.rect.x = int(v)
+
+    @property
+    def y(self) -> float:
+        return self._float_y
+
+    @y.setter
+    def y(self, v: float) -> None:
+        self._float_y = float(v)
+        self.rect.y = int(v)
+
+    # ------------------------------------------------------------------
+    # Physics sync
+    # ------------------------------------------------------------------
+
+    def sync_from_rect(self) -> None:
+        """Pull rect.x / rect.y (set by PhysicsSystem) into the float fields.
+
+        Call once per frame, immediately after PhysicsSystem.update() and
+        before AISystem.update(), so the AI always reads physics-resolved
+        coordinates.
+        """
+        self._float_x = float(self.rect.x)
+        self._float_y = float(self.rect.y)
+
+    # ------------------------------------------------------------------
+    # Update — sync + advance animation
+    # ------------------------------------------------------------------
+
+    def update(self, dt: float, tile_map: Optional[object] = None) -> None:
+        """Sync physics position and advance the animation controller.
+
+        Must be called after PhysicsSystem and before AISystem each frame.
+        """
+        self.sync_from_rect()
+
+        if self.animation_controller is not None:
+            key = _STATE_ANIM_KEY.get(self.state, "patrol")
+            facing_right = self.vx >= 0
+            self.animation_controller.set_state(key, facing_right=facing_right)
+            self.animation_controller.update(dt)
+
+    # ------------------------------------------------------------------
+    # Combat
+    # ------------------------------------------------------------------
 
     def take_damage(self, amount: int) -> int:
         """Apply damage. Transitions to DEAD state when HP reaches 0.
@@ -115,19 +203,34 @@ class RobotEnemy(Entity):
         self._death_timer += dt
         return self._death_timer >= self._death_anim_duration
 
+    # ------------------------------------------------------------------
+    # Render — animated sprite or coloured-rect fallback + HP bar
+    # ------------------------------------------------------------------
+
     def render(self, screen: pygame.Surface, camera_offset: Tuple[int, int]) -> None:
         if not self.alive:
             return
         ox, oy = camera_offset
-        draw_rect = pygame.Rect(self.rect.x - ox, self.rect.y - oy, self.rect.w, self.rect.h)
-        color = (220, 80, 80) if self.type_id == "elite" else (180, 60, 60)
-        pygame.draw.rect(screen, color, draw_rect)
-        # HP bar
+        draw_x = self.rect.x - ox
+        draw_y = self.rect.y - oy
+
+        if self.animation_controller is not None:
+            # Entity.render() blits the current animation frame
+            super().render(screen, camera_offset)
+        else:
+            # Coloured-rect fallback (no sprite sheet loaded)
+            color = (220, 80, 80) if self.type_id == "elite" else (180, 60, 60)
+            pygame.draw.rect(
+                screen, color,
+                pygame.Rect(draw_x, draw_y, self.rect.w, self.rect.h),
+            )
+
+        # HP bar (always drawn when alive)
         bar_w = self.rect.w
         hp_pct = self.hp / max(1, self.max_hp)
-        pygame.draw.rect(screen, (60, 20, 20), (draw_rect.x, draw_rect.y - 6, bar_w, 4))
+        pygame.draw.rect(screen, (60, 20, 20), (draw_x, draw_y - 6, bar_w, 4))
         pygame.draw.rect(
             screen,
             (220, 60, 60),
-            (draw_rect.x, draw_rect.y - 6, int(bar_w * hp_pct), 4),
+            (draw_x, draw_y - 6, int(bar_w * hp_pct), 4),
         )

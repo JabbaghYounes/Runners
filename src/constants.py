@@ -94,6 +94,9 @@ HEALTH_COLOR = ( 80, 255,  80)
 ARMOR_COLOR  = ( 80, 160, 255)
 XP_COLOR     = (160,  80, 255)
 
+# ── Player stats ──────────────────────────────────────────────────────────────
+PLAYER_MAX_HEALTH: int = 100   # default HP for a new player
+
 # ── Extended physics constants ────────────────────────────────────────────────
 WALK_SPEED     = 180.0
 SPRINT_SPEED   = 300.0
@@ -142,11 +145,15 @@ PVP_AGENT_MOVE_SPEED: float = 120.0     # px/s — bot chase speed
 PVP_LOOT_DETECT_RANGE: float = 96.0    # px — bot loot pickup detection radius
 
 # ── Default key bindings (fallback when settings.json is missing a binding) ───
+# Bindable actions: move_left, move_right, jump, crouch, sprint, slide,
+#                  reload, interact, inventory, map, pause
 DEFAULT_KEYS: dict[str, int] = {
     "move_left":  pygame.K_a,
     "move_right": pygame.K_d,
     "jump":       pygame.K_SPACE,
     "crouch":     pygame.K_s,
+    "sprint":     pygame.K_LSHIFT,
+    "slide":      pygame.K_c,
     "reload":     pygame.K_r,
     "interact":   pygame.K_e,
     "inventory":  pygame.K_TAB,
