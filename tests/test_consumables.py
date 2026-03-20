@@ -718,17 +718,20 @@ class TestPlayerDamage:
         assert result == 30
 
     def test_take_damage_respects_armor_reduction(self, player: Player) -> None:
+        # After the Phase-1 refactor, take_damage(n) applies exactly n HP.
+        # Armor reduction is CombatSystem's responsibility (see test_armor_feature.py).
         player.armor = 5
         result = player.take_damage(20)
-        assert result == 15
-        assert player.health == 85
+        assert result == 20
+        assert player.health == 80
 
     def test_take_damage_armor_absorbs_all_damage(self, player: Player) -> None:
-        """Armor >= damage: effective damage floors at 1 (spec: max(1, raw - armor))."""
+        """take_damage(n) always applies n HP regardless of armor value.
+        Armor-aware reduction happens upstream in CombatSystem."""
         player.armor = 50
         result = player.take_damage(20)
-        assert result == 1
-        assert player.health == 99
+        assert result == 20
+        assert player.health == 80
 
     def test_take_damage_clamps_health_at_zero(self, player: Player) -> None:
         player.take_damage(999)

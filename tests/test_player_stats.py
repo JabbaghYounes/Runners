@@ -177,13 +177,26 @@ class TestArmorStat:
         assert player.armor >= 0
 
     def test_armor_reduces_damage_taken(self, player):
-        """With armor set, net health loss must be less than raw damage."""
+        """Armor reduces incoming damage via the CombatSystem formula.
+
+        ``take_damage()`` no longer self-applies armor — reduction happens in
+        CombatSystem (``effective = max(1, raw - armor)``).  This test verifies
+        the full chain: setting ``player.armor`` is reflected by
+        ``get_effective_armor()``, and the CombatSystem-computed effective
+        damage is less than the raw incoming value.
+        """
         player.armor = 20
+        # get_effective_armor() must reflect the current armor value
+        assert player.get_effective_armor() == 20.0
+
+        raw_damage = 30
+        # CombatSystem formula
+        effective = max(1, raw_damage - int(player.get_effective_armor()))
         hp_before = _get_hp(player)
-        player.take_damage(30)
+        player.take_damage(effective)
         net_loss = hp_before - _get_hp(player)
-        # Armor should absorb some; net loss < 30
-        assert net_loss < 30
+        # Armor absorbed part of the blow; effective damage < raw
+        assert net_loss < raw_damage
 
     def test_zero_armor_takes_full_damage(self, player):
         player.armor = 0

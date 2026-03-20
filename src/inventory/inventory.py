@@ -1,13 +1,13 @@
-"""Slot-based inventory with quick-slots and consumable use."""
+"""Slot-based inventory with quick-slots, consumable use, and an armor slot."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from src.core.event_bus import event_bus
 
 if TYPE_CHECKING:
     from src.entities.player import Player
-    from src.inventory.item import Consumable, Item
+    from src.inventory.item import Armor, Consumable, Item
 
 
 class _CallableList(list):
@@ -32,6 +32,8 @@ class Inventory:
         self._equipped: "Item | None" = None
         self.equipped_weapon: "Item | None" = None
         self.equipped_armor: "Item | None" = None
+        # Callback fired whenever the equipped armor changes (set by Player)
+        self.on_armor_changed: Callable[[], None] | None = None
 
     # ------------------------------------------------------------------
     # Slot inspection
@@ -162,6 +164,53 @@ class Inventory:
         return self._equipped
 
     # ------------------------------------------------------------------
+    # Dedicated armor slot
+    # ------------------------------------------------------------------
+
+    def equip_armor(self, armor_item: "Armor") -> "Armor | None":
+        """Equip an armor piece, displacing any currently equipped one.
+
+        The old piece (if any) is returned so the caller can decide what to
+        do with it (e.g. return it to the main grid).
+
+        Args:
+            armor_item: The :class:`Armor` instance to equip.
+
+        Returns:
+            The previously equipped :class:`Armor`, or ``None`` if the slot
+            was empty.
+
+        Raises:
+            TypeError: If *armor_item* is not an :class:`Armor` instance.
+        """
+        from src.inventory.item import Armor
+        if not isinstance(armor_item, Armor):
+            raise TypeError(
+                f"equip_armor() requires an Armor instance, got {type(armor_item).__name__!r}"
+            )
+        displaced = self.equipped_armor
+        self.equipped_armor = armor_item
+        if self.on_armor_changed is not None:
+            self.on_armor_changed()
+        event_bus.emit("armor_equipped", item=armor_item)
+        return displaced
+
+    def unequip_armor(self) -> "Armor | None":
+        """Remove the currently equipped armor piece and return it.
+
+        Returns:
+            The removed :class:`Armor` item, or ``None`` if no armor was
+            equipped.
+        """
+        displaced = self.equipped_armor
+        self.equipped_armor = None
+        if self.on_armor_changed is not None:
+            self.on_armor_changed()
+        if displaced is not None:
+            event_bus.emit("armor_unequipped", item=displaced)
+        return displaced
+
+    # ------------------------------------------------------------------
     # Quick-slot management
     # ------------------------------------------------------------------
 
@@ -232,11 +281,19 @@ class Inventory:
     # ------------------------------------------------------------------
 
     def to_save_list(self) -> list[dict]:
-        """Serialise all items in the inventory to a JSON-safe list of dicts."""
+        """Serialise all items in the inventory to a JSON-safe list of dicts.
+
+        The equipped armor item is appended with a ``"_slot": "equipped_armor"``
+        sentinel so it can be restored by :meth:`from_save_list`.
+        """
         result: list[dict] = []
         for item in self._slots:
             if item is not None and hasattr(item, "to_save_dict"):
                 result.append(item.to_save_dict())
+        if self.equipped_armor is not None and hasattr(self.equipped_armor, "to_save_dict"):
+            entry = self.equipped_armor.to_save_dict()
+            entry["_slot"] = "equipped_armor"
+            result.append(entry)
         return result
 
     def from_save_list(self, data: list[dict]) -> None:
@@ -254,6 +311,16 @@ class Inventory:
             if not isinstance(item_data, dict):
                 continue
             try:
+                # Detect the equipped-armor sentinel
+                if item_data.get("_slot") == "equipped_armor":
+                    entry = {k: v for k, v in item_data.items() if k != "_slot"}
+                    item = make_item(entry)
+                    if isinstance(item, Armor):
+                        self.equipped_armor = item
+                        if self.on_armor_changed is not None:
+                            self.on_armor_changed()
+                    continue
+
                 item = make_item(item_data)
                 # Rebuild attachments when the saved dict carries them.
                 if (

@@ -1,9 +1,12 @@
 """Unit and integration tests for LootItem and LootSystem.
 
+Run: pytest tests/test_loot.py
+
 Covers:
 - LootItem initialisation, centre calculation, distance helpers
 - in_pickup_range() boundary conditions (at-radius, inside, outside)
 - pickup() marks item dead and returns wrapped Item
+- LootItem.render() draws rarity-colored outer border and dark inner fill
 - LootSystem.spawn_loot() with default and custom loot tables
 - spawn_loot() silently swallows unknown item IDs
 - LootSystem.update() happy-path pickup: item transferred to inventory,
@@ -13,6 +16,8 @@ Covers:
 - enemy_killed EventBus handler spawns loot at the enemy's position
 - teardown() unsubscribes from enemy_killed
 - _weighted_choice() static method boundary conditions
+- Item rarity values and monetary value scaling
+- LAYER_LOOT render-layer Z-order constant
 
 All tests are pure Python and do NOT require Pygame or a display.
 """
@@ -479,3 +484,232 @@ class TestWeightedChoice:
         ]
         for _ in range(20):
             assert LootSystem._weighted_choice(table) == "always"
+
+
+# ---------------------------------------------------------------------------
+# LootItem — render() rarity-colored border
+# ---------------------------------------------------------------------------
+
+
+class TestLootItemRender:
+    """LootItem.render() must draw a rarity-colored outer border and dark inner fill."""
+
+    def test_outer_rect_uses_item_rarity_color(self, medkit: Consumable) -> None:
+        """The first pygame.draw.rect call must use item.rarity_color as the color."""
+        from unittest.mock import MagicMock, patch
+
+        loot = LootItem(medkit, 0.0, 0.0)
+        screen = MagicMock()
+        captured: list = []
+
+        with patch("pygame.draw.rect", side_effect=lambda *a, **kw: captured.append(a)):
+            loot.render(screen, (0, 0))
+
+        assert len(captured) >= 1
+        # pygame.draw.rect(surface, color, rect) → color is index 1
+        outer_color = captured[0][1]
+        assert outer_color == medkit.rarity_color
+
+    def test_inner_rect_uses_dark_fill_color(self, medkit: Consumable) -> None:
+        """The second pygame.draw.rect call must use (30, 30, 40) for the inner fill."""
+        from unittest.mock import MagicMock, patch
+
+        loot = LootItem(medkit, 0.0, 0.0)
+        screen = MagicMock()
+        captured: list = []
+
+        with patch("pygame.draw.rect", side_effect=lambda *a, **kw: captured.append(a)):
+            loot.render(screen, (0, 0))
+
+        assert len(captured) >= 2
+        inner_color = captured[1][1]
+        assert inner_color == (30, 30, 40)
+
+    def test_exactly_two_rects_drawn_per_alive_item(self, medkit: Consumable) -> None:
+        """render() must call pygame.draw.rect exactly twice: border + fill."""
+        from unittest.mock import MagicMock, patch
+
+        loot = LootItem(medkit, 0.0, 0.0)
+        screen = MagicMock()
+        captured: list = []
+
+        with patch("pygame.draw.rect", side_effect=lambda *a, **kw: captured.append(a)):
+            loot.render(screen, (0, 0))
+
+        assert len(captured) == 2
+
+    def test_render_skipped_entirely_when_not_alive(self, medkit: Consumable) -> None:
+        """A dead LootItem (alive=False) must not call pygame.draw.rect at all."""
+        from unittest.mock import MagicMock, patch
+
+        loot = LootItem(medkit, 0.0, 0.0)
+        loot.alive = False
+        screen = MagicMock()
+        captured: list = []
+
+        with patch("pygame.draw.rect", side_effect=lambda *a, **kw: captured.append(a)):
+            loot.render(screen, (0, 0))
+
+        assert len(captured) == 0
+
+    def test_camera_offset_shifts_render_position(self, medkit: Consumable) -> None:
+        """Screen x-coord must equal world_x minus camera_offset_x."""
+        from unittest.mock import MagicMock, patch
+
+        loot = LootItem(medkit, 200.0, 300.0)
+        screen = MagicMock()
+        captured: list = []
+
+        with patch("pygame.draw.rect", side_effect=lambda *a, **kw: captured.append(a)):
+            loot.render(screen, (50, 100))
+
+        # sx = int(200) - 50 = 150
+        outer_rect = captured[0][2]
+        assert outer_rect[0] == 150
+
+    def test_rarity_color_differs_between_common_and_epic(self) -> None:
+        """A common item and an epic item must produce visually distinct borders."""
+        epic_item = Consumable(
+            id="rare_stim",
+            name="Epic Stim",
+            rarity="epic",
+            sprite_key="stim",
+            value=500,
+            consumable_type="buff",
+        )
+        common_item = Consumable(
+            id="medkit_small",
+            name="Small Medkit",
+            rarity="common",
+            sprite_key="medkit_small",
+            value=50,
+            consumable_type="heal",
+        )
+        assert epic_item.rarity_color != common_item.rarity_color
+
+    def test_border_outer_rect_covers_full_sprite_size(self, medkit: Consumable) -> None:
+        """Outer rect width and height must equal _SPRITE_SIZE (24 px)."""
+        from unittest.mock import MagicMock, patch
+        from src.entities.loot_item import _SPRITE_SIZE
+
+        loot = LootItem(medkit, 0.0, 0.0)
+        screen = MagicMock()
+        captured: list = []
+
+        with patch("pygame.draw.rect", side_effect=lambda *a, **kw: captured.append(a)):
+            loot.render(screen, (0, 0))
+
+        outer_rect = captured[0][2]
+        assert outer_rect[2] == _SPRITE_SIZE
+        assert outer_rect[3] == _SPRITE_SIZE
+
+    def test_inner_rect_inset_from_outer_border(self, medkit: Consumable) -> None:
+        """Inner rect must be 2 px inset on each side compared to the outer rect."""
+        from unittest.mock import MagicMock, patch
+
+        loot = LootItem(medkit, 0.0, 0.0)
+        screen = MagicMock()
+        captured: list = []
+
+        with patch("pygame.draw.rect", side_effect=lambda *a, **kw: captured.append(a)):
+            loot.render(screen, (0, 0))
+
+        outer = captured[0][2]
+        inner = captured[1][2]
+        # Inner rect is 2 px inset: x+2, y+2, w-4, h-4
+        assert inner[0] == outer[0] + 2
+        assert inner[2] == outer[2] - 4
+        assert inner[3] == outer[3] - 4
+
+
+# ---------------------------------------------------------------------------
+# Item rarity — monetary value and color properties
+# ---------------------------------------------------------------------------
+
+
+class TestRarityValues:
+    """Item.value and monetary_value must reflect the rarity tier hierarchy."""
+
+    def test_common_default_value_less_than_epic(self) -> None:
+        """RARITY_DEFAULT_VALUES: common < uncommon < rare < epic."""
+        from src.inventory.item import RARITY_DEFAULT_VALUES
+        assert RARITY_DEFAULT_VALUES["common"] < RARITY_DEFAULT_VALUES["epic"]
+
+    def test_all_rarity_tiers_have_positive_default_value(self) -> None:
+        """Every tier in RARITY_DEFAULT_VALUES must have a value > 0."""
+        from src.inventory.item import RARITY_DEFAULT_VALUES
+        for tier, val in RARITY_DEFAULT_VALUES.items():
+            assert val > 0, f"Rarity '{tier}' has non-positive default value {val}"
+
+    def test_rarity_order_has_strictly_increasing_values(self) -> None:
+        """Default values must increase monotonically along RARITY_ORDER."""
+        from src.inventory.item import RARITY_DEFAULT_VALUES, RARITY_ORDER
+        known = [r for r in RARITY_ORDER if r in RARITY_DEFAULT_VALUES]
+        values = [RARITY_DEFAULT_VALUES[r] for r in known]
+        for i in range(len(values) - 1):
+            assert values[i] < values[i + 1], (
+                f"Value at '{known[i]}' ({values[i]}) not < '{known[i+1]}' ({values[i+1]})"
+            )
+
+    def test_item_with_zero_value_falls_back_to_rarity_default(self) -> None:
+        """An item with value=0 must use RARITY_DEFAULT_VALUES for its tier."""
+        from src.inventory.item import RARITY_DEFAULT_VALUES
+        item = Consumable(
+            id="test_common",
+            name="Test Common",
+            rarity="common",
+            sprite_key="test",
+            value=0,
+            consumable_type="heal",
+        )
+        assert item.value == RARITY_DEFAULT_VALUES["common"]
+
+    def test_monetary_value_scales_with_rarity_multiplier(self) -> None:
+        """monetary_value must equal base_value * RARITY_VALUE_MULTIPLIERS[rarity]."""
+        import pytest
+        from src.inventory.item import RARITY_VALUE_MULTIPLIERS
+        item = Consumable(
+            id="test_rare",
+            name="Test Rare",
+            rarity="rare",
+            sprite_key="test",
+            value=0,
+            consumable_type="heal",
+        )
+        expected = item.base_value * RARITY_VALUE_MULTIPLIERS["rare"]
+        assert item.monetary_value == pytest.approx(expected)
+
+    def test_rarity_colors_are_distinct_for_all_tiers(self) -> None:
+        """Each rarity tier must have a unique color — no two tiers share a color."""
+        from src.inventory.item import RARITY_COLORS
+        colors = list(RARITY_COLORS.values())
+        assert len(colors) == len(set(colors)), "Duplicate rarity colors detected"
+
+
+# ---------------------------------------------------------------------------
+# Render layer constant
+# ---------------------------------------------------------------------------
+
+
+class TestLootLayerConstant:
+    """LAYER_LOOT must sit between tiles and enemies in the Z-order stack."""
+
+    def test_layer_loot_is_1(self) -> None:
+        """LAYER_LOOT == 1 per the spec render-layer table."""
+        from src.constants import LAYER_LOOT
+        assert LAYER_LOOT == 1
+
+    def test_layer_loot_above_tiles(self) -> None:
+        """Loot must render on top of the tile layer."""
+        from src.constants import LAYER_LOOT, LAYER_TILES
+        assert LAYER_LOOT > LAYER_TILES
+
+    def test_layer_loot_below_enemies(self) -> None:
+        """Loot must render beneath enemies so enemies occlude dropped items."""
+        from src.constants import LAYER_LOOT, LAYER_ENEMIES
+        assert LAYER_LOOT < LAYER_ENEMIES
+
+    def test_layer_loot_below_player(self) -> None:
+        """Loot must render beneath the player layer."""
+        from src.constants import LAYER_LOOT, LAYER_PLAYER
+        assert LAYER_LOOT < LAYER_PLAYER
