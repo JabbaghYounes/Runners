@@ -18,8 +18,10 @@ patrol the area they guard.
 """
 from __future__ import annotations
 
+import random
 import warnings
-from typing import TYPE_CHECKING, List
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, List
 
 if TYPE_CHECKING:
     from src.core.event_bus import EventBus
@@ -77,6 +79,69 @@ class SpawnSystem:
             )
 
     # ------------------------------------------------------------------
+    # Player spawning
+    # ------------------------------------------------------------------
+
+    def spawn_player(
+        self,
+        spawn_points: "list[tuple[float, float]]",
+    ) -> "Player":
+        """Create the player entity at a randomly chosen spawn point.
+
+        Parameters:
+            spawn_points: List of ``(x, y)`` world positions. When empty,
+                          the player is placed at the world origin (0, 0).
+
+        Returns:
+            A newly constructed :class:`Player` instance.
+        """
+        from src.entities.player import Player
+
+        if spawn_points:
+            sx, sy = random.choice(spawn_points)
+        else:
+            sx, sy = 0.0, 0.0
+
+        player = Player(float(sx), float(sy), event_bus=self._event_bus)
+        self._emit("player", player, float(sx), float(sy))
+        return player
+
+    # ------------------------------------------------------------------
+    # Loot spawning
+    # ------------------------------------------------------------------
+
+    def spawn_loot(
+        self,
+        spawn_points: "list[tuple[float, float]]",
+        item_db: "ItemDatabase | None",
+    ) -> "list[LootItem]":
+        """Place one loot item at each spawn point.
+
+        Parameters:
+            spawn_points: List of ``(x, y)`` world positions.
+            item_db:      ItemDatabase used to pick and create items.
+                          When ``None`` or empty, returns an empty list.
+
+        Returns:
+            List of :class:`LootItem` instances.
+        """
+        if item_db is None or not getattr(item_db, 'item_ids', None):
+            return []
+
+        from src.entities.loot_item import LootItem
+
+        loot: List["LootItem"] = []
+        for (lx, ly) in spawn_points:
+            item_id = random.choice(item_db.item_ids)
+            item = item_db.create(item_id)
+            if item is None:
+                continue
+            loot_item = LootItem(item, float(lx), float(ly))
+            loot.append(loot_item)
+            self._emit("loot", loot_item, float(lx), float(ly))
+        return loot
+
+    # ------------------------------------------------------------------
     # Robot enemy spawning
     # ------------------------------------------------------------------
 
@@ -123,6 +188,93 @@ class SpawnSystem:
         for zone in zones:
             all_enemies.extend(self.spawn_zone_enemies(zone, enemy_db))
         return all_enemies
+
+    def spawn_pvp_bots(
+        self,
+        zones: "List[Zone]",
+    ) -> "List[PlayerAgent]":
+        """Create a :class:`PlayerAgent` for every entry in each zone's
+        ``pvp_bot_spawns`` list.
+
+        Parameters:
+            zones: Iterable of :class:`Zone` objects. Zones that lack the
+                   ``pvp_bot_spawns`` attribute, or have it as ``None`` / empty,
+                   contribute zero bots.
+
+        Returns:
+            Flat list of :class:`PlayerAgent` instances in zone order.
+        """
+        from src.entities.player_agent import PlayerAgent
+
+        bots: List[PlayerAgent] = []
+        for zone in zones:
+            spawns = getattr(zone, "pvp_bot_spawns", None) or []
+            for (bx, by) in spawns:
+                try:
+                    bot = PlayerAgent(x=float(bx), y=float(by))
+                    bots.append(bot)
+                    self._emit("pvp_bot", bot, float(bx), float(by))
+                except Exception:
+                    pass
+        return bots
+
+    def teardown(
+        self,
+        enemies: "List",
+        pvp_bots: "List",
+        loot_items: "List",
+    ) -> None:
+        """Mark every entity dead and clear all three lists in-place.
+
+        Safe to call on already-empty lists or entities already dead.
+        Idempotent: a second call on the now-empty lists is a no-op.
+        """
+        for entity in list(enemies):
+            entity.alive = False
+        enemies.clear()
+
+        for entity in list(pvp_bots):
+            entity.alive = False
+        pvp_bots.clear()
+
+        for entity in list(loot_items):
+            entity.alive = False
+        loot_items.clear()
+
+    def spawn_round(
+        self,
+        tile_map: Any,
+        enemy_db: "EnemyDatabase",
+        item_db: "ItemDatabase",
+    ) -> "SpawnResult":
+        """Create all round entities from *tile_map* data.
+
+        Spawn order: loot → robot enemies → PvP bots → player.
+
+        Returns:
+            :class:`SpawnResult` containing all created entities.
+        """
+        # Loot first (earliest in event order)
+        loot_spawns = getattr(tile_map, "loot_spawns", []) or []
+        loot_items = self.spawn_loot(loot_spawns, item_db)
+
+        # Robot enemies from all zone enemy_spawns definitions
+        zones = getattr(tile_map, "zones", []) or []
+        enemies = self.spawn_all_zones(zones, enemy_db)
+
+        # PvP bots from each zone's pvp_bot_spawns list
+        pvp_bots = self.spawn_pvp_bots(zones)
+
+        # Player last (must always be the final entity_spawned event)
+        player_spawns = getattr(tile_map, "player_spawns", []) or []
+        player = self.spawn_player(player_spawns)
+
+        return SpawnResult(
+            player=player,
+            enemies=enemies,
+            pvp_bots=pvp_bots,
+            loot_items=loot_items,
+        )
 
     def spawn_bots(
         self,

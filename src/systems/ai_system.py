@@ -27,7 +27,7 @@ Exported constants used by tests:
 from __future__ import annotations
 
 import math
-from typing import Any, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
 from src.constants import PVP_LOOT_DETECT_RANGE
 from src.entities.robot_enemy import AIState, RobotEnemy
@@ -62,6 +62,210 @@ class AISystem:
     by enemy ATTACK actions (so the caller can add them to the shared projectile
     list and let ``CombatSystem`` resolve collisions on subsequent frames).
     """
+
+    def update_bots(
+        self,
+        bots: List[Any],
+        player: Any,
+        loot_items: List[Any],
+        tilemap: Any,
+        dt: float,
+        event_bus: Any,
+        combat_system: Any = None,
+    ) -> List[Any]:
+        """Update all PvP bot agents using a PlayerAgent-aware FSM.
+
+        Uses ``_update_bot_one`` which reads ``health``/``_waypoint_idx``
+        (PlayerAgent fields) instead of the RobotEnemy fields expected by
+        ``_update_one``.
+
+        Returns projectiles fired by bots this frame.
+        """
+        result: List[Any] = []
+        for bot in bots:
+            ai_state = getattr(bot, "ai_state", None)
+            # Skip bots that are externally marked dead but not in DEAD state
+            if not getattr(bot, "alive", True) and ai_state != AIState.DEAD:
+                continue
+            # Skip bots whose death animation has already been fully processed
+            if not getattr(bot, "alive", True) and getattr(bot, "_death_event_emitted", False):
+                continue
+            proj = self._update_bot_one(
+                bot, player, loot_items, tilemap, dt, event_bus,
+                combat_system=combat_system,
+            )
+            if proj is not None:
+                result.append(proj)
+        return result
+
+    def _update_bot_one(
+        self,
+        bot: Any,
+        player: Any,
+        loot_items: List[Any],
+        tilemap: Any,
+        dt: float,
+        bus: Any,
+        combat_system: Any = None,
+    ) -> Optional[Any]:
+        """Drive one PlayerAgent through its PATROL/AGGRO/ATTACK/DEAD FSM.
+
+        Differences from ``_update_one`` (RobotEnemy-centric):
+          - Uses ``health`` instead of ``hp``
+          - Uses ``_waypoint_idx`` instead of ``current_waypoint``
+          - ATTACK fires via ``weapon_state`` (fire cooldown, reload)
+          - DEAD emits ``player_killed`` (not ``enemy_killed``)
+        """
+        ai_state = bot.ai_state
+
+        # ------------------------------------------------------------------
+        # DEAD: run death-animation timer then emit player_killed once
+        # ------------------------------------------------------------------
+        if ai_state == AIState.DEAD:
+            bot._death_timer = getattr(bot, "_death_timer", 0.0) + dt
+            if bot._death_timer >= _DEATH_ANIM_DURATION:
+                if not getattr(bot, "_death_event_emitted", False):
+                    bot._death_event_emitted = True
+                    bcx, bcy = _centre_of(bot)
+                    bus.emit(
+                        "player_killed",
+                        victim=bot,
+                        killer=getattr(bot, "_killer", None),
+                    )
+            return None  # no movement in DEAD state
+
+        # ------------------------------------------------------------------
+        # HP → DEAD transition (external health zeroing)
+        # ------------------------------------------------------------------
+        if getattr(bot, "health", 1) <= 0:
+            bot.ai_state = AIState.DEAD
+            bot._death_timer = 0.0
+            return None
+
+        bcx, bcy = _centre_of(bot)
+        pcx, pcy = _centre_of(player)
+        dist = _dist(bcx, bcy, pcx, pcy)
+
+        # ------------------------------------------------------------------
+        # PATROL
+        # ------------------------------------------------------------------
+        if ai_state == AIState.PATROL:
+            # Loot pickup: consume any loot within detect range
+            for loot in loot_items:
+                if not getattr(loot, "alive", False):
+                    continue
+                lcx = getattr(getattr(loot, "rect", None), "centerx", loot.x)
+                lcy = getattr(getattr(loot, "rect", None), "centery", loot.y)
+                if _dist(bcx, bcy, lcx, lcy) <= PVP_LOOT_DETECT_RANGE:
+                    loot.alive = False
+                    bus.emit(
+                        "item_picked_up",
+                        bot=bot,
+                        item=getattr(loot, "item", None),
+                    )
+                    break
+
+            # Aggro check: switch to AGGRO when player is nearby
+            if dist <= bot.aggro_range:
+                bot.ai_state = AIState.AGGRO
+                bot.lost_timer = 0.0
+                bot.path = []
+            else:
+                self._do_bot_patrol(bot, dt)
+            return None
+
+        # ------------------------------------------------------------------
+        # AGGRO
+        # ------------------------------------------------------------------
+        if ai_state == AIState.AGGRO:
+            if dist <= bot.attack_range:
+                bot.ai_state = AIState.ATTACK
+            elif dist > bot.aggro_range:
+                bot.lost_timer = getattr(bot, "lost_timer", 0.0) + dt
+                if bot.lost_timer >= LOST_PLAYER_TIMEOUT:
+                    bot.ai_state = AIState.PATROL
+                    bot.path = []
+            else:
+                bot.lost_timer = 0.0
+
+            if bot.ai_state == AIState.AGGRO:
+                self._do_chase(bot, player, tilemap, dt)
+            return None
+
+        # ------------------------------------------------------------------
+        # ATTACK
+        # ------------------------------------------------------------------
+        if ai_state == AIState.ATTACK:
+            if dist > bot.attack_range:
+                bot.ai_state = AIState.AGGRO
+                bot.path = []
+                return None
+            return self._do_bot_attack(bot, player, dt, bus, combat_system)
+
+        return None
+
+    def _do_bot_patrol(self, bot: Any, dt: float) -> None:
+        """Advance the bot along its patrol waypoints using ``_waypoint_idx``."""
+        if not bot.patrol_waypoints:
+            return
+        idx = getattr(bot, "_waypoint_idx", 0)
+        wp = bot.patrol_waypoints[idx % len(bot.patrol_waypoints)]
+        bcx, bcy = _centre_of(bot)
+        dx = wp[0] - bcx
+        dy = wp[1] - bcy
+        dist_to_wp = math.hypot(dx, dy)
+
+        if dist_to_wp < _ARRIVAL_THRESHOLD:
+            bot._waypoint_idx = (idx + 1) % len(bot.patrol_waypoints)
+        else:
+            direction = 1.0 if dx > 0 else -1.0
+            bot.target_vx = direction * bot.patrol_speed
+            bot.x += direction * bot.patrol_speed * dt
+
+    def _do_bot_attack(
+        self,
+        bot: Any,
+        player: Any,
+        dt: float,
+        bus: Any,
+        combat_system: Any = None,
+    ) -> Optional[Any]:
+        """Fire at *player* using the bot's ``weapon_state``, handling reload."""
+        ws = getattr(bot, "weapon_state", None)
+        if ws is None:
+            return None  # unarmed bot — cannot fire
+
+        # Trigger reload when magazine is empty
+        if ws.needs_reload:
+            ws.reloading = True
+            ws.reload_timer = ws.reload_time
+            return None
+
+        # Count down active reload
+        if ws.reloading:
+            ws.reload_timer = max(0.0, ws.reload_timer - dt)
+            if ws.reload_timer <= 0.0:
+                ws.reloading = False
+                ws.reload_timer = 0.0
+                ws.ammo = ws.magazine_size
+            return None
+
+        # Decrement fire cooldown
+        if ws.fire_cooldown > 0:
+            ws.fire_cooldown = max(0.0, ws.fire_cooldown - dt)
+
+        # Fire when weapon is ready
+        if ws.can_fire and combat_system is not None:
+            pcx, pcy = _centre_of(player)
+            try:
+                proj = combat_system.fire(bot, pcx, pcy)
+                ws.ammo -= 1
+                ws.fire_cooldown = ws.fire_interval
+                return proj
+            except Exception:
+                pass
+
+        return None
 
     def update(
         self,

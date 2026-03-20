@@ -138,10 +138,6 @@ class ExtractionSystem:
                         "player_extracted",
                         inventory_snapshot=inventory_snapshot,
                     )
-                    self._bus.publish(
-                        "player_extracted",
-                        loot=list(player.inventory),
-                    )
 
     # ------------------------------------------------------------------
     # Properties read by UI widgets and GameScene

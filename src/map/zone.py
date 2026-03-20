@@ -26,6 +26,8 @@ class Zone:
     music_track: Optional[str] = None
     enemy_spawns: Optional[List[dict]] = field(default_factory=list)
     color: Tuple[int, int, int] = (60, 120, 180)
+    # PvP bot spawn positions added by pvp-bots feature branch
+    pvp_bot_spawns: Optional[List[Tuple[float, float]]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.spawn_points is None:

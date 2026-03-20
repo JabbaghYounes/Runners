@@ -6,6 +6,7 @@ from typing import List, Tuple, Optional
 
 import pygame
 
+from src.constants import TILE_SIZE, BORDER_DIM, ACCENT_GREEN
 from src.map.zone import Zone
 
 TILE_AIR = 0
@@ -70,6 +71,10 @@ class TileMap:
                 music_track=zd.get('music_track'),
                 enemy_spawns=zd.get('enemy_spawns', []),
                 color=tuple(zd.get('color', [60, 120, 180])),
+                pvp_bot_spawns=[
+                    (float(p[0]), float(p[1]))
+                    for p in zd.get('pvp_bot_spawns', [])
+                ],
             )
             tm.zones.append(zone)
         tm.baked_minimap = tm._bake_minimap()

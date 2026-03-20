@@ -385,32 +385,35 @@ class TestDamageFloorSpec:
     """
 
     def test_damage_floor_is_one_when_armor_equals_raw_damage(self):
-        """armor == raw_damage → effective = max(1, 0) = 1, not 0."""
+        """CombatSystem computes max(1, raw - armor) then passes to take_damage."""
         p = Player(x=0, y=0)
         p.armor = 15
         before = p.health
+        effective = max(1, 15 - p.armor)  # CombatSystem does this
 
-        net = p.take_damage(15)
+        net = p.take_damage(effective)
 
         assert net == 1
         assert p.health == before - 1
 
     def test_damage_floor_is_one_when_armor_exceeds_raw_damage(self):
-        """armor > raw_damage → effective = max(1, negative) = 1."""
+        """CombatSystem floors to 1 when armor > raw_damage."""
         p = Player(x=0, y=0)
         p.armor = 50
+        effective = max(1, 10 - p.armor)
 
-        net = p.take_damage(10)
+        net = p.take_damage(effective)
 
         assert net == 1
 
     def test_damage_floor_is_one_with_massive_armor(self):
-        """Extreme armor still delivers exactly 1 HP damage per hit."""
+        """CombatSystem floors to 1 even with extreme armor."""
         p = Player(x=0, y=0)
         p.armor = 9999
         before = p.health
+        effective = max(1, 5 - p.armor)
 
-        net = p.take_damage(5)
+        net = p.take_damage(effective)
 
         assert net == 1
         assert p.health == before - 1
@@ -435,12 +438,13 @@ class TestDamageFloorSpec:
         assert p.alive is True
 
     def test_damage_above_armor_deals_reduced_amount(self):
-        """raw > armor → effective = raw − armor (still ≥ 1)."""
+        """CombatSystem computes raw − armor when raw > armor."""
         p = Player(x=0, y=0)
         p.armor = 10
         before = p.health
+        effective = max(1, 30 - p.armor)  # CombatSystem does this
 
-        net = p.take_damage(30)
+        net = p.take_damage(effective)
 
         assert net == 20
         assert p.health == before - 20

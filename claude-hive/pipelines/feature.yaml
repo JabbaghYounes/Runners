@@ -1,0 +1,51 @@
+# This file documents the pipeline stages.
+# The actual execution logic is in scripts/swarm.sh.
+# Keep this in sync with swarm.sh when modifying the pipeline.
+
+name: feature-development
+
+stages:
+
+  - design:
+      agents:
+        - system-architect
+        - db-designer
+        - api-designer
+        - ux-designer
+
+  - architect:
+      agent: architect  # includes planning (architecture + task breakdown)
+
+  - implement:
+      agents: $IMPL_AGENTS  # default: backend frontend
+      parallel: true
+
+  - test:
+      agent: tester
+
+  - debug:
+      agent: debugger
+      retries: $MAX_RETRIES
+
+  - review:
+      agent: reviewer
+      optional: true  # controlled by ENABLE_REVIEW config
+      model: $DESIGN_MODEL
+
+  - commit:
+      agent: versioncontroller
+
+  - integration-test:
+      agent: integration-tester
+      optional: true  # controlled by ENABLE_INTEGRATION_TEST config
+      runs_after: all feature swarms complete
+      model: $IMPL_MODEL
+
+features:
+  logging: Agent output saved to claude-hive/prd/logs/run-<timestamp>/
+  granular_resume: Stage-level progress in claude-hive/prd/status/<slug>.status
+  parallel: MAX_PARALLEL > 1 uses git worktrees for concurrent feature swarms
+  cost_tracking: Token usage logged to cost.csv, viewable via cost-report.sh
+  incremental: --incremental flag skips existing features and reuses specs
+  integration_test: ENABLE_INTEGRATION_TEST merges branches and runs cross-feature tests
+  tui: run-product-tui.sh provides a live ANSI dashboard during pipeline runs

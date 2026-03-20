@@ -304,7 +304,7 @@ class Inventory:
         Weapon dicts that include an ``attachments`` key have their
         attachments re-equipped via ``weapon_from_save_dict()``.
         """
-        from src.inventory.item import Weapon, make_item
+        from src.inventory.item import Weapon, Armor, make_item
 
         self.clear()
         for item_data in data:

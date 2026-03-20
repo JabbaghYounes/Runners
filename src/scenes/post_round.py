@@ -140,6 +140,10 @@ class PostRound:
         asset_manager=None,
         audio_system=None,
         challenge_system=None,
+        # These parameters were missing from the original merge — added to
+        # unify the new-path constructor with the full PostRound feature spec.
+        event_bus=None,
+        home_base=None,
         # Legacy positional args
         sm=None,
         settings=None,
@@ -160,6 +164,11 @@ class PostRound:
             self.show_level_up = False
             self.total_loot_value = 0
             self._completed_challenges: list = []
+            self._font_lg: "pygame.font.Font | None" = None
+            self._font_md: "pygame.font.Font | None" = None
+            self._font_sm: "pygame.font.Font | None" = None
+            self._btn_rects: list = []
+            self._xp_before: int = 0
             return
 
         # ------------------------------------------------------------------
@@ -176,12 +185,29 @@ class PostRound:
         self._audio_system = audio_system
         self.blurred_bg = blurred_bg
 
+        # Font handles — lazy-initialised in _ensure_fonts()
+        self._font_lg: "pygame.font.Font | None" = None
+        self._font_md: "pygame.font.Font | None" = None
+        self._font_sm: "pygame.font.Font | None" = None
+        self._btn_rects: list = []
+
         # Store completed challenges for render-time display
         self._completed_challenges: list = []
 
+        # Snapshot XP before committing (for display: XP bar animation start)
+        self._xp_before: int = xp_system.xp if xp_system else 0
+
         # --- Commit base progression ---
+        # If XP was awarded live during the round (via XPSystem event subscriptions,
+        # which set pending_xp > 0), call commit() to finalise without re-awarding.
+        # Fall back to award() for legacy flows where XP wasn't pre-awarded.
         if xp_system and summary:
-            xp_system.award(summary.xp_earned)
+            # Guard against MagicMock: only treat as int before comparing to 0.
+            _pending = getattr(xp_system, 'pending_xp', 0)
+            if isinstance(_pending, int) and _pending > 0:
+                xp_system.commit()
+            else:
+                xp_system.award(summary.xp_earned)
         if currency and summary:
             currency.add(summary.money_earned)
 

@@ -31,10 +31,9 @@ htmlcov/
 saves/*.json
 saves/*.sav
 
-# Internal agent files
-ricky/
-
-# Generated specs
-prd.md
+# Claude Hive pipeline artifacts (logs, status, worktrees)
+claude-hive/prd/logs/
+claude-hive/prd/status/
+.claude-hive-worktrees/
 settings.json
 CLAUDE.md

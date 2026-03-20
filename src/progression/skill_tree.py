@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Any, Set, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
 if TYPE_CHECKING:
     from src.progression.xp_system import XPSystem
@@ -80,7 +80,8 @@ class SkillTree:
 
     def can_unlock(self, node_id: str,
                    xp_system: Optional["XPSystem"] = None,
-                   player_level: Optional[int] = None) -> bool:
+                   player_level: Optional[int] = None,
+                   currency: Any = None) -> bool:
         """Check whether *node_id* can be unlocked.
 
         Requirements:
@@ -93,6 +94,8 @@ class SkillTree:
            nodes are blocked unless a level is supplied.
         5. If *xp_system* is provided, the player must have enough skill
            points (``xp_system.skill_points >= node.cost_sp``).
+        6. If *currency* is provided and the node has a ``cost_money`` key,
+           the player's balance must cover that cost.
         """
         node = self._nodes.get(node_id)
         if node is None:
@@ -116,6 +119,11 @@ class SkillTree:
             cost_sp = node.get("cost_sp", 1)
             if xp_system.skill_points < cost_sp:
                 return False
+        # Currency gating — only applied when a currency object is provided
+        if currency is not None:
+            cost_money = node.get("cost_money", 0)
+            if cost_money > 0 and currency.balance < cost_money:
+                return False
         return True
 
     def get_cost_sp(self, node_id: str) -> int:
@@ -131,25 +139,44 @@ class SkillTree:
 
     def unlock(self, node_id: str,
                xp_system: Optional["XPSystem"] = None,
-               player_level: Optional[int] = None) -> bool:
+               player_level: Optional[int] = None,
+               currency: Any = None,
+               event_bus: Any = None) -> bool:
         """Attempt to unlock *node_id*.
 
         If *xp_system* is provided the skill-point cost is deducted
-        automatically.  *player_level* is forwarded to :meth:`can_unlock` for
-        level-gating without a full XPSystem.  Returns True on success, False
-        if prerequisites are not met, the node is already unlocked, or the
-        player cannot afford the cost.
+        automatically.  If *currency* is provided and the node has a
+        ``cost_money`` key, that amount is deducted from the balance.
+        *player_level* is forwarded to :meth:`can_unlock` for level-gating
+        without a full XPSystem.  *event_bus* overrides the instance-level
+        event bus for event emission (useful in tests).
+
+        Returns True on success, False if prerequisites are not met, the node
+        is already unlocked, or the player cannot afford the cost.
         """
-        if not self.can_unlock(node_id, xp_system, player_level):
+        if not self.can_unlock(node_id, xp_system, player_level, currency):
             return False
         node = self._nodes[node_id]
         cost_sp = node.get("cost_sp", 1)
         if xp_system is not None and cost_sp > 0:
             if not xp_system.spend_skill_point(cost_sp):
                 return False
+        # Deduct currency cost
+        cost_money = node.get("cost_money", 0)
+        if currency is not None and cost_money > 0:
+            if not currency.spend(cost_money):
+                return False
         self._unlocked.add(node_id)
-        if self._event_bus is not None:
-            self._event_bus.emit("skill_unlocked", node_id=node_id)
+        # Emit events using the provided bus (or fall back to instance bus)
+        active_bus = event_bus if event_bus is not None else self._event_bus
+        if active_bus is not None:
+            active_bus.emit("skill_unlocked", node_id=node_id)
+            if currency is not None and cost_money > 0:
+                active_bus.emit(
+                    "currency_spent",
+                    amount=cost_money,
+                    new_balance=currency.balance,
+                )
         return True
 
     # ------------------------------------------------------------------

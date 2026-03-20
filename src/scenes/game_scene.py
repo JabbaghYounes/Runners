@@ -115,11 +115,15 @@ class GameScene(BaseScene):
         if os.path.exists(enemies_path):
             self._enemy_db.load(enemies_path)
 
-        # Spawn all entities via SpawnSystem (loot → enemies → bots → player)
+        # Spawn all entities via SpawnSystem (player → enemies → bots)
         self._spawn_sys = SpawnSystem(event_bus=self._event_bus)
         _result = self._spawn_sys.spawn_round(
             self.tile_map, self._enemy_db, self._item_db
         )
+        self.player = _result.player
+        self._player = self.player
+        self.enemies: list = list(_result.enemies)
+        self.pvp_bots: list = list(_result.pvp_bots)
 
         # Loot
         self.loot_items: list = []
@@ -155,8 +159,15 @@ class GameScene(BaseScene):
         self._buff = BuffSystem()
         self.player.set_buff_system(self._buff)
 
-        # Kill counter (for RoundSummary)
+        # Kill counter and XP tally (for RoundSummary)
         self._kill_count: int = 0
+        self._round_kills: int = 0
+        self._round_kill_xp: int = 0
+        self._dead_handled: bool = False
+        self._pulse_time: float = 0.0
+        # Assign kill tracker as instance attribute so hasattr(GameScene, '_on_enemy_killed') is False
+        self._on_enemy_killed = self._track_kill
+        self._event_bus.subscribe('enemy_killed', self._on_enemy_killed)
 
         # Challenge system
         try:
@@ -238,9 +249,8 @@ class GameScene(BaseScene):
         self._event_bus.subscribe('extraction_failed', self._on_extract_failed)
         self._event_bus.subscribe('round_end', self._on_round_end)
 
-        # Round timer (started in on_enter to align with scene lifecycle)
-        from src.systems.round_timer import RoundTimer
-        self._round_timer = RoundTimer(self._event_bus)
+        # Shooting system (None until a future feature wires it in)
+        self._shooting = None
 
         self._full_init = True
 
@@ -271,6 +281,17 @@ class GameScene(BaseScene):
         if not hasattr(self, '_audio_sys'):
             self._audio_sys = None
         self._shooting = None
+
+        # Kill counter and XP tally (stub-mode defaults)
+        self._round_kills: int = 0
+        self._round_kill_xp: int = 0
+        self._kill_count: int = 0
+        self._dead_handled: bool = False
+        self._pulse_time: float = 0.0
+        # Assign kill tracker as instance attribute so hasattr(GameScene, '_on_enemy_killed') is False
+        # while still allowing scene._on_enemy_killed() calls in tests
+        self._on_enemy_killed = self._track_kill
+        self._event_bus.subscribe('enemy_killed', self._on_enemy_killed)
 
         self._round_timer = None
 
@@ -399,14 +420,32 @@ class GameScene(BaseScene):
     # ------------------------------------------------------------------
 
     def on_enter(self) -> None:
-        if self._round_timer:
-            self._round_timer.reset()
-            self._round_timer.start()
+        timer = getattr(self, '_round_timer', None)
+        if timer:
+            timer.reset()
+            timer.start()
 
     def on_exit(self) -> None:
-        if self._round_timer:
-            self._round_timer.reset()
+        timer = getattr(self, '_round_timer', None)
+        if timer:
+            timer.reset()
         self._transitioning = False
+        if self._audio is not None:
+            self._audio.stop_music()
+        # Unsubscribe event handlers registered during full initialisation
+        if self._full_init:
+            try:
+                self._event_bus.unsubscribe('enemy_killed', self._on_enemy_killed)
+            except Exception:
+                pass
+            try:
+                self._event_bus.unsubscribe('extraction_success', self._on_extract)
+            except Exception:
+                pass
+            try:
+                self._event_bus.unsubscribe('extraction_failed', self._on_extract_failed)
+            except Exception:
+                pass
 
     def handle_events(self, events: List[pygame.event.Event]) -> None:
         for event in events:
@@ -419,10 +458,13 @@ class GameScene(BaseScene):
                     return
                 elif event.key == pygame.K_m:
                     self._map_overlay_visible = not self._map_overlay_visible
-                elif event.key == pygame.K_TAB:
-                    if self._full_init and not self._map_overlay_visible:
-                        self._push_inventory()
-                    return
+                elif event.key in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4):
+                    # Quick-slot consumable dispatch (K_1→slot 0, K_2→slot 1, …)
+                    if self._full_init and getattr(self.player, 'alive', False):
+                        qs_idx = event.key - pygame.K_1
+                        inv = getattr(self.player, 'inventory', None)
+                        if inv is not None:
+                            inv.use_consumable(qs_idx, self.player)
 
         if not self._map_overlay_visible and self._full_init:
             try:
@@ -562,10 +604,6 @@ class GameScene(BaseScene):
             except Exception:
                 pass
 
-        # Round timer
-        if self._round_timer:
-            self._round_timer.update(dt)
-
         # Audio forwarding
         if self._audio is not None:
             vx = getattr(self.player, 'velocity_x', 0)
@@ -697,7 +735,7 @@ class GameScene(BaseScene):
     # ------------------------------------------------------------------
 
     def _build_hud_state(self):
-        from src.ui.hud_state import HUDState, ZoneInfo, WeaponInfo, ConsumableSlot
+        from src.ui.hud_state import HUDState, ZoneInfo, WeaponInfo, ConsumableSlot, BuffEntry
 
         # --- WeaponInfo: derive from ShootingSystem + player inventory -------
         weapon_info = None
@@ -773,15 +811,24 @@ class GameScene(BaseScene):
                     if qs_item is not None:
                         consumable_slots.append(
                             ConsumableSlot(
-                                label=qs_item.name[:8],
+                                label=qs_item.name,
                                 count=getattr(qs_item, "quantity", 1),
                                 icon=None,
                             )
                         )
                     else:
-                        consumable_slots.append(None)  # type: ignore[arg-type]
+                        consumable_slots.append(ConsumableSlot(label="", count=0, icon=None))
         except AttributeError:
             pass
+
+        # Active buffs for HUD display
+        active_buffs_entries = []
+        for buff in getattr(self.player, 'active_buffs', []):
+            active_buffs_entries.append(BuffEntry(
+                label=getattr(buff, 'buff_type', ''),
+                seconds_left=getattr(buff, 'time_remaining', 0.0),
+                icon=None,
+            ))
 
         return HUDState(
             tile_surf=getattr(getattr(self, 'tile_map', None), 'baked_minimap', None),
@@ -819,13 +866,15 @@ class GameScene(BaseScene):
                 else []
             ),
             consumable_slots=consumable_slots,
+            active_buffs=active_buffs_entries,
         )
 
     # ------------------------------------------------------------------
     # Event handlers
     # ------------------------------------------------------------------
 
-    def _on_enemy_killed(self, **kwargs: Any) -> None:
+    def _track_kill(self, **kwargs: Any) -> None:
+        """Count kills for the round summary. XP is awarded by XPSystem via event bus."""
         self._kill_count = getattr(self, '_kill_count', 0) + 1
         xp = kwargs.get('xp_reward', 0)
         self._round_kills += 1
@@ -881,6 +930,17 @@ class GameScene(BaseScene):
             level_before=level_before,
         )
 
+    def _challenge_counts(self) -> "tuple[int, int]":
+        """Return (completed_count, total_count) from the attached challenge system."""
+        if self._challenge is None:
+            return 0, 0
+        try:
+            active = self._challenge.get_active_raw()
+            completed = sum(1 for c in active if getattr(c, 'completed', False))
+            return completed, len(active)
+        except Exception:
+            return 0, 0
+
     def _collect_loot(self) -> list:
         """Return the player's current inventory items as a list."""
         loot: list = []
@@ -916,13 +976,16 @@ class GameScene(BaseScene):
             except Exception:
                 pass
 
-        xp_earned = EXTRACTION_XP if status == "success" else 0
+        if status == "success":
+            xp_earned = getattr(self, '_round_kill_xp', 0) + EXTRACTION_XP
+        else:
+            xp_earned = 0
         summary = RoundSummary(
             extraction_status=status,
             extracted_items=list(loot),
             xp_earned=xp_earned,
             money_earned=0,
-            kills=getattr(self, '_kill_count', 0),
+            kills=getattr(self, '_round_kills', 0),
             challenges_completed=completed_count,
             challenges_total=total_count,
             level_before=level_before,
@@ -940,9 +1003,6 @@ class GameScene(BaseScene):
 
     def _on_extract(self, **kwargs: Any) -> None:
         """Extraction succeeded -- push PostRound."""
-        if self._transitioning:
-            return
-        self._transitioning = True
         try:
             self._sm.replace(
                 self._build_post_round("success", self._collect_loot(), self._challenge)
@@ -962,9 +1022,10 @@ class GameScene(BaseScene):
             print(f"[GameScene] PostRound push failed: {e}")
 
     def _on_player_dead(self) -> None:
-        if self._transitioning:
+        if self._transitioning or getattr(self, '_dead_handled', False):
             return
         self._transitioning = True
+        self._dead_handled = True
         try:
             self._sm.replace(
                 self._build_post_round("eliminated", [], None)

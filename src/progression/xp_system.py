@@ -88,6 +88,7 @@ class XPSystem:
             if self._event_bus is not None:
                 self._event_bus.emit("level_up", level=self.level)
                 self._event_bus.emit("level.up", level=self.level)
+                self._event_bus.emit("player_leveled_up", level=self.level)
 
     def _recalculate_level(self) -> None:
         while self.xp >= self.xp_to_next_level():
@@ -118,7 +119,8 @@ class XPSystem:
 
     def load(self, data: Dict[str, Any]) -> None:
         self.xp = data.get('xp', 0)
-        self.level = data.get('level', 1)
+        # Clamp to 1: a saved level=0 would break xp_to_next_level math.
+        self.level = max(1, data.get('level', 1))
         self.skill_points = data.get('skill_points', 0)
 
     def to_save_dict(self) -> Dict[str, Any]:

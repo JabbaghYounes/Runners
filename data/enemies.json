@@ -69,10 +69,10 @@
       "rolls": 1,
       "rarity_weights": {"common": 60, "uncommon": 30, "rare": 10, "epic": 0},
       "entries": [
-        {"item_id": "ammo_pistol",   "weight": 60},
-        {"item_id": "medkit_small",  "weight": 30},
-        {"item_id": "weapon_pistol", "weight": 10},
-        {"item_id": "grip_angled",   "weight": 5}
+        {"item_id": "ammo_pistol",   "weight": 60, "rarity": "common"},
+        {"item_id": "medkit_small",  "weight": 30, "rarity": "uncommon"},
+        {"item_id": "weapon_pistol", "weight": 10, "rarity": "rare"},
+        {"item_id": "grip_angled",   "weight": 5,  "rarity": "epic"}
       ]
     },
     "heavy_drops": {

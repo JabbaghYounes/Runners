@@ -52,15 +52,19 @@ _GRID_X = (SCREEN_W - _GRID_W) // 2          # ≈ 457
 _QS_W = 4 * _SLOT_SIZE + 3 * _SLOT_GAP       # 242 px
 _QS_X = (SCREEN_W - _QS_W) // 2              # ≈ 519
 
+# ── Dedicated armor-slot position (right of main grid, 20 px gap) ─────────────
+_ARMOR_SLOT_X = _GRID_X + _GRID_W + 20
+_ARMOR_SLOT_Y = _GRID_Y
+
 
 class InventoryScreen(BaseScene):
     """Full-screen inventory overlay pushed over GameScene via Tab key."""
 
     def __init__(
         self,
-        sm: SceneManager,
-        inventory: Optional[Inventory],
-        assets: Optional[AssetManager] = None,
+        sm: Optional["SceneManager"] = None,
+        inventory: Optional["Inventory"] = None,
+        assets: Optional["AssetManager"] = None,
     ) -> None:
         self._sm = sm
         self._inventory = inventory
@@ -91,6 +95,18 @@ class InventoryScreen(BaseScene):
                     return
             elif event.type == pygame.MOUSEMOTION:
                 self._hovered_slot = self._slot_at(event.pos)
+            elif event.type == pygame.MOUSEBUTTONDOWN and getattr(event, "button", 0) == 1:
+                # Left-click: equip armor from grid, or interact with armor slot
+                if self._inventory is not None:
+                    pos = getattr(event, 'pos', None)
+                    if pos is None:
+                        continue
+                    if self._armor_slot_rect().collidepoint(pos):
+                        self._handle_armor_slot_click()
+                    else:
+                        slot_idx = self._slot_at(pos)
+                        if slot_idx is not None:
+                            self._handle_grid_slot_click(slot_idx)
             elif event.type == pygame.MOUSEBUTTONDOWN and getattr(event, "button", 0) == 3:
                 # Right-click: assign hovered slot to next free quick-slot
                 slot_idx = self._slot_at(event.pos)
@@ -366,6 +382,52 @@ class InventoryScreen(BaseScene):
             rendered = self._font_item.render(text, True, color)
             screen.blit(rendered, (tx + 8, ly))
             ly += line_h
+
+    def _armor_slot_rect(self) -> pygame.Rect:
+        """Screen rect for the dedicated armor equipment slot (right of main grid)."""
+        return pygame.Rect(_ARMOR_SLOT_X, _ARMOR_SLOT_Y, _SLOT_SIZE, _SLOT_SIZE)
+
+    def _handle_grid_slot_click(self, slot_idx: int) -> None:
+        """Left-click on a main-grid slot: if the item is Armor, equip it.
+
+        The item is removed from the grid first; any currently equipped armor
+        is displaced back into the grid (or triggers an inventory_full event
+        when no space is available).
+        """
+        from src.inventory.item import Armor
+        from src.core.event_bus import event_bus as _global_bus
+
+        if self._inventory is None:
+            return
+        item = self._inventory.item_at(slot_idx)
+        if item is None or not isinstance(item, Armor):
+            return
+
+        # Remove from grid, then equip (equip_armor does not require grid presence)
+        self._inventory.remove_item(slot_idx)
+        displaced = self._inventory.equip_armor(item)
+
+        # Return displaced armor to the grid if space allows
+        if displaced is not None:
+            result = self._inventory.add_item(displaced)
+            if result is None:
+                _global_bus.emit("inventory_full", item=displaced)
+
+    def _handle_armor_slot_click(self) -> None:
+        """Left-click on the dedicated armor slot: unequip the current armor.
+
+        The removed piece is returned to the main grid when possible.  If the
+        grid is full, an ``inventory_full`` event is emitted.
+        """
+        from src.core.event_bus import event_bus as _global_bus
+
+        if self._inventory is None:
+            return
+        displaced = self._inventory.unequip_armor()
+        if displaced is not None:
+            result = self._inventory.add_item(displaced)
+            if result is None:
+                _global_bus.emit("inventory_full", item=displaced)
 
     def _assign_to_quick_slot(self, inv_slot_idx: int) -> None:
         """Assign item at *inv_slot_idx* to the next free quick-slot.

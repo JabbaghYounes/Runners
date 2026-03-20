@@ -57,12 +57,26 @@ class WeaponState:
     def load_from_weapon(self, weapon: Any) -> None:
         """Copy stats from an inventory Weapon item, including attachment bonuses."""
         # Use effective_stat() when available so attachment deltas are included.
-        if hasattr(weapon, "effective_stat"):
-            self.fire_rate = float(weapon.effective_stat("fire_rate"))
-            self.damage = float(weapon.effective_stat("damage"))
-        else:
-            self.fire_rate = float(getattr(weapon, "fire_rate", DEFAULT_WEAPON_STATS["fire_rate"]))
-            self.damage = float(getattr(weapon, "damage", DEFAULT_WEAPON_STATS["damage"]))
+        # Guard: MagicMock auto-creates any attribute, so verify the result is
+        # actually numeric before trusting it (avoids float(MagicMock()) == 1.0).
+        _eff_stat = getattr(weapon, "effective_stat", None)
+        fire_rate: Optional[float] = None
+        damage: Optional[float] = None
+        if callable(_eff_stat):
+            try:
+                fr = _eff_stat("fire_rate")
+                dm = _eff_stat("damage")
+                if isinstance(fr, (int, float)) and isinstance(dm, (int, float)):
+                    fire_rate = float(fr)
+                    damage = float(dm)
+            except Exception:
+                pass
+        if fire_rate is None:
+            fire_rate = float(getattr(weapon, "fire_rate", DEFAULT_WEAPON_STATS["fire_rate"]))
+        if damage is None:
+            damage = float(getattr(weapon, "damage", DEFAULT_WEAPON_STATS["damage"]))
+        self.fire_rate = fire_rate
+        self.damage = damage
 
         # reload_time: use the property (correct default) plus any attachment bonus.
         base_reload = float(getattr(weapon, "reload_time", DEFAULT_WEAPON_STATS["reload_time"]))

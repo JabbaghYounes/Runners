@@ -7,6 +7,7 @@ from typing import List, Optional, TYPE_CHECKING
 import pygame
 
 from src.constants import (
+    Faction,
     WALK_SPEED, SPRINT_SPEED, CROUCH_SPEED,
     JUMP_VEL, SLIDE_VEL, SLIDE_DURATION,
     NORMAL_HEIGHT, CROUCH_HEIGHT,
@@ -135,6 +136,10 @@ class Player(Entity):
                 self.inventory = Inventory()
             except Exception:
                 self.inventory = []
+
+        # Wire armor-change callback so equip/unequip updates self.armor
+        if hasattr(self.inventory, 'on_armor_changed'):
+            self.inventory.on_armor_changed = self._recalculate_armor
 
         # Shooting / interaction
         self._shoot_pressed: bool = False

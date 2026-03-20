@@ -78,3 +78,5 @@ class HUDState:
     currency: int = 0
     # Baked 1-px-per-tile Surface from TileMap, or None when unavailable.
     tile_surf: Optional[Any] = None
+    # Index of the currently selected quick-slot (0-3); -1 means none selected.
+    active_quick_slot: int = -1
