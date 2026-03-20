@@ -45,6 +45,7 @@ class ChallengeInfo:
     progress: int = 0
     target: int = 0
     completed: bool = False
+    zone: str = ""
 
 
 @dataclass

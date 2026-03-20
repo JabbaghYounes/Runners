@@ -1,5 +1,5 @@
 """RoundSummary dataclass — carries all post-round statistics."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 _VALID_STATUSES = frozenset({"success", "timeout", "eliminated"})
 
@@ -15,6 +15,10 @@ class RoundSummary:
     challenges_total: int
     level_before: int
     level_after: int = 0
+    # Challenge bonus totals applied at PostRound
+    challenge_bonus_xp: int = 0
+    challenge_bonus_money: int = 0
+    challenge_bonus_items: list = field(default_factory=list)
 
     def __post_init__(self):
         if self.extraction_status not in _VALID_STATUSES:

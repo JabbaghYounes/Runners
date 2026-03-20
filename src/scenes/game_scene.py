@@ -160,6 +160,9 @@ class GameScene(BaseScene):
         self._buff = BuffSystem()
         self.player.set_buff_system(self._buff)
 
+        # Kill counter (for RoundSummary)
+        self._kill_count: int = 0
+
         # Challenge system
         try:
             from src.systems.challenge_system import ChallengeSystem
@@ -786,6 +789,7 @@ class GameScene(BaseScene):
     # ------------------------------------------------------------------
 
     def _on_enemy_killed(self, **kwargs: Any) -> None:
+        self._kill_count = getattr(self, '_kill_count', 0) + 1
         xp = kwargs.get('xp_reward', 0)
         if self._xp_system and xp:
             old_level = self._xp_system.level
@@ -793,29 +797,72 @@ class GameScene(BaseScene):
             if self._xp_system.level > old_level:
                 self._event_bus.emit('level.up', level=self._xp_system.level)
 
+    def _collect_loot(self) -> list:
+        """Return the player's current inventory items as a list."""
+        loot: list = []
+        if hasattr(self.player, 'inventory'):
+            inv = self.player.inventory
+            if hasattr(inv, 'get_items'):
+                loot = list(inv.get_items())
+            elif isinstance(inv, list):
+                loot = list(inv)
+        return loot
+
+    def _build_post_round(
+        self,
+        status: str,
+        loot: list,
+        challenge_system: object,
+    ) -> "PostRound":
+        """Construct a PostRound instance with a full RoundSummary."""
+        from src.scenes.post_round import PostRound
+        from src.save.save_manager import SaveManager
+        from src.core.round_summary import RoundSummary
+        from src.constants import EXTRACTION_XP
+
+        save_mgr = SaveManager(_path('saves', 'save.json'))
+        level_before = self._xp_system.level if self._xp_system else 1
+
+        completed_count = 0
+        total_count = 0
+        if challenge_system is not None:
+            try:
+                completed_count = len(challenge_system.get_completed_challenges())
+                total_count = len(challenge_system.get_active_raw())
+            except Exception:
+                pass
+
+        xp_earned = EXTRACTION_XP if status == "success" else 0
+        summary = RoundSummary(
+            extraction_status=status,
+            extracted_items=list(loot),
+            xp_earned=xp_earned,
+            money_earned=0,
+            kills=getattr(self, '_kill_count', 0),
+            challenges_completed=completed_count,
+            challenges_total=total_count,
+            level_before=level_before,
+        )
+
+        return PostRound(
+            summary=summary,
+            xp_system=self._xp_system,
+            currency=self._currency,
+            save_manager=save_mgr,
+            scene_manager=self._sm,
+            audio_system=getattr(self, '_audio_sys', None),
+            challenge_system=challenge_system,
+        )
+
     def _on_extract(self, **kwargs: Any) -> None:
         """Extraction succeeded -- push PostRound."""
         if self._transitioning:
             return
         self._transitioning = True
         try:
-            from src.scenes.post_round import PostRound
-            from src.save.save_manager import SaveManager
-            save_mgr = SaveManager(_path('saves', 'save.json'))
-            loot = []
-            if hasattr(self.player, 'inventory'):
-                inv = self.player.inventory
-                if hasattr(inv, 'get_items'):
-                    loot = list(inv.get_items())
-                elif isinstance(inv, list):
-                    loot = list(inv)
-            self._sm.replace(PostRound(
-                sm=self._sm, settings=self._settings, assets=self._assets,
-                xp_system=self._xp_system, currency=self._currency,
-                save_manager=save_mgr,
-                extracted=True,
-                loot_items=loot,
-            ))
+            self._sm.replace(
+                self._build_post_round("success", self._collect_loot(), self._challenge)
+            )
         except Exception as e:
             print(f"[GameScene] PostRound push failed: {e}")
 
@@ -824,23 +871,9 @@ class GameScene(BaseScene):
             return
         self._transitioning = True
         try:
-            from src.scenes.post_round import PostRound
-            from src.save.save_manager import SaveManager
-            save_mgr = SaveManager(_path('saves', 'save.json'))
-            loot = []
-            if hasattr(self.player, 'inventory'):
-                inv = self.player.inventory
-                if hasattr(inv, 'get_items'):
-                    loot = list(inv.get_items())
-                elif isinstance(inv, list):
-                    loot = list(inv)
-            self._sm.replace(PostRound(
-                sm=self._sm, settings=self._settings, assets=self._assets,
-                xp_system=self._xp_system, currency=self._currency,
-                save_manager=save_mgr,
-                extracted=False,
-                loot_items=loot,
-            ))
+            self._sm.replace(
+                self._build_post_round("timeout", [], self._challenge)
+            )
         except Exception as e:
             print(f"[GameScene] PostRound push failed: {e}")
 
@@ -849,16 +882,9 @@ class GameScene(BaseScene):
             return
         self._transitioning = True
         try:
-            from src.scenes.post_round import PostRound
-            from src.save.save_manager import SaveManager
-            save_mgr = SaveManager(_path('saves', 'save.json'))
-            self._sm.replace(PostRound(
-                sm=self._sm, settings=self._settings, assets=self._assets,
-                xp_system=self._xp_system, currency=self._currency,
-                save_manager=save_mgr,
-                extracted=False,
-                loot_items=[],
-            ))
+            self._sm.replace(
+                self._build_post_round("eliminated", [], None)
+            )
         except Exception as e:
             print(f"[GameScene] PostRound push failed: {e}")
 
