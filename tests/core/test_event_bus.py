@@ -94,3 +94,69 @@ class TestEventBus:
         assert self.bus.listener_count("ev") == 1
         self.bus.unsubscribe("ev", cb)
         assert self.bus.listener_count("ev") == 0
+
+    # ── publish alias ─────────────────────────────────────────────────────────
+
+    def test_publish_alias_calls_subscriber(self):
+        """publish() is a first-class alias for emit() and must deliver events."""
+        calls = []
+        self.bus.subscribe("ping", lambda **kw: calls.append(kw))
+        self.bus.publish("ping", x=7)
+        assert calls == [{"x": 7}]
+
+    def test_publish_alias_delivers_to_multiple_subscribers(self):
+        results = []
+        self.bus.subscribe("ev", lambda **kw: results.append("a"))
+        self.bus.subscribe("ev", lambda **kw: results.append("b"))
+        self.bus.publish("ev")
+        assert results == ["a", "b"]
+
+    # ── positional dict compatibility ─────────────────────────────────────────
+
+    def test_emit_positional_dict_arg_is_treated_as_kwargs(self):
+        """emit('ev', {'k': 'v'}) must be equivalent to emit('ev', k='v')."""
+        received = []
+        self.bus.subscribe("ev", lambda **kw: received.append(kw))
+        self.bus.emit("ev", {"key": "val"})
+        assert received == [{"key": "val"}]
+
+    def test_emit_positional_dict_and_explicit_kwargs_both_reach_listener(self):
+        """Positional dict is normalised and forwarded identically to kwargs."""
+        received = []
+        self.bus.subscribe("ev", lambda **kw: received.append(kw.get("n")))
+        self.bus.emit("ev", {"n": 99})
+        self.bus.emit("ev", n=99)
+        assert received == [99, 99]
+
+    # ── duplicate subscription prevention ────────────────────────────────────
+
+    def test_subscribe_same_callback_twice_registers_only_once(self):
+        """Registering the same callback a second time must not double-deliver."""
+        calls = []
+        cb = lambda **kw: calls.append(1)
+        self.bus.subscribe("ev", cb)
+        self.bus.subscribe("ev", cb)
+        self.bus.emit("ev")
+        assert len(calls) == 1
+
+    # ── synchronous delivery order ────────────────────────────────────────────
+
+    def test_emit_delivers_to_listeners_in_subscription_order(self):
+        """Listeners must be invoked in the order they subscribed."""
+        order = []
+        self.bus.subscribe("ev", lambda **kw: order.append("first"))
+        self.bus.subscribe("ev", lambda **kw: order.append("second"))
+        self.bus.emit("ev")
+        assert order == ["first", "second"]
+
+    def test_emit_is_synchronous_before_returning(self):
+        """All listeners must finish before emit() returns — no deferred calls."""
+        done = []
+
+        def slow_cb(**kw):
+            done.append(True)
+
+        self.bus.subscribe("ev", slow_cb)
+        self.bus.emit("ev")
+        # If emit were async, done would be empty here.
+        assert done == [True]

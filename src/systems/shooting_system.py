@@ -37,6 +37,7 @@ class ShootingSystem:
         self._event_bus = event_bus
         self._weapon_system = WeaponSystem(event_bus=event_bus)
         self._weapon_state = WeaponState()
+        self._current_weapon: Any = None
 
         # Mouse state
         self._mouse_screen_x: float = 0.0
@@ -45,6 +46,10 @@ class ShootingSystem:
         self._mouse_world_y: float = 0.0
         self._fire_held: bool = False
         self._reload_pressed: bool = False
+
+        # Subscribe to attachment changes so WeaponState stays in sync.
+        if event_bus is not None:
+            event_bus.subscribe("weapon_attachment_changed", self._on_attachment_changed)
 
     # ------------------------------------------------------------------
     # Public accessors
@@ -70,6 +75,7 @@ class ShootingSystem:
 
     def equip_weapon(self, weapon: Any) -> None:
         """Load stats from an inventory Weapon item into the weapon state."""
+        self._current_weapon = weapon
         if weapon is not None:
             self._weapon_state.load_from_weapon(weapon)
         else:
@@ -184,3 +190,8 @@ class ShootingSystem:
         elif weapon is not None and weapon is not getattr(self, "_last_equipped_weapon", None):
             self._weapon_state.load_from_weapon(weapon)
             self._last_equipped_weapon = weapon
+
+    def _on_attachment_changed(self, weapon: Any = None, slot_type: str = "", **kwargs: Any) -> None:
+        """Refresh WeaponState when an attachment is added/removed on the equipped weapon."""
+        if weapon is not None and weapon is self._current_weapon:
+            self._weapon_state.load_from_weapon(weapon)

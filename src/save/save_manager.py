@@ -108,6 +108,7 @@ class SaveManager:
                 "level": getattr(xp_system, "level", 1) if xp_system else 1,
                 "xp": getattr(xp_system, "xp", 0) if xp_system else 0,
                 "money": getattr(currency, "balance", 0) if currency else 0,
+                "skill_points": getattr(xp_system, "skill_points", 0) if xp_system else 0,
             },
             "inventory": (
                 inventory.to_save_list()
@@ -155,6 +156,7 @@ class SaveManager:
         if xp_system is not None:
             xp_system.xp = player.get("xp", 0)
             xp_system.level = player.get("level", 1)
+            xp_system.skill_points = player.get("skill_points", 0)
         if inventory is not None and hasattr(inventory, "from_save_list"):
             inventory.from_save_list(state.get("inventory", []))
         if skill_tree is not None:
@@ -177,7 +179,7 @@ class SaveManager:
         """Return the canonical zero-state for a brand-new player."""
         return {
             "version": SAVE_VERSION,
-            "player": {"level": 1, "xp": 0, "money": 0},
+            "player": {"level": 1, "xp": 0, "money": 0, "skill_points": 0},
             "inventory": [],
             "skill_tree": {"unlocked_nodes": []},
             "home_base": {"armory": 0, "med_bay": 0, "storage": 0, "comms": 0},
@@ -210,6 +212,12 @@ class SaveManager:
         data.setdefault("player", {})
         for pkey in ("level", "xp", "money"):
             data["player"].setdefault(pkey, defaults["player"][pkey])
+        # skill_points: derive a reasonable default for saves created before
+        # this field existed — grant one unspent SP per level already gained.
+        data["player"].setdefault(
+            "skill_points",
+            max(0, data["player"].get("level", 1) - 1),
+        )
 
         # Ensure home_base block with all facilities
         data.setdefault("home_base", {})
