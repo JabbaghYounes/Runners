@@ -1,4 +1,4 @@
-"""AI System -- drives the four-state FSM for robot enemies.
+"""AI System -- drives the four-state FSM for robot enemies and PvP bots.
 
 State machine: PATROL -> AGGRO -> ATTACK -> DEAD
 
@@ -29,8 +29,13 @@ from __future__ import annotations
 import math
 from typing import Any, List, Optional
 
+from src.constants import PVP_LOOT_DETECT_RANGE
 from src.entities.robot_enemy import AIState, RobotEnemy
 from src.utils.pathfinding import world_to_cell, cell_to_world, bfs
+
+if TYPE_CHECKING:
+    from src.entities.player_agent import PlayerAgent
+    from src.systems.weapon_system import WeaponSystem as _WeaponSystemType
 
 # ---------------------------------------------------------------------------
 # Constants

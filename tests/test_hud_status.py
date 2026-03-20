@@ -205,8 +205,13 @@ class TestHUDDraw:
         hud.draw(screen)
 
     def test_draw_with_low_timer_does_not_crash(self, hud, screen):
-        # seconds_remaining < 60 → timer turns red
+        # seconds_remaining <= 60 → timer turns DANGER_RED
         hud.update(_full_state(seconds_remaining=45.0), dt=0.016)
+        hud.draw(screen)
+
+    def test_draw_with_amber_timer_does_not_crash(self, hud, screen):
+        # 60 < seconds_remaining <= 300 → timer turns amber
+        hud.update(_full_state(seconds_remaining=180.0), dt=0.016)
         hud.draw(screen)
 
     def test_draw_with_active_vignette_does_not_crash(self, hud, screen):
@@ -299,13 +304,48 @@ class TestHUDStateValuesPassedThrough:
         assert ratio == pytest.approx(0.25)
 
     def test_timer_format_below_60s_shows_red_needed(self):
-        """Confirm the threshold used in HUD for red timer colour."""
+        """Confirm the threshold used in HUD for the red (danger) timer colour.
+
+        The HUD uses _TIMER_DANGER_SECS = 60 as the lower boundary:
+          seconds_remaining <= 60  → DANGER_RED
+        """
         st = HUDState(seconds_remaining=59.0)
-        assert st.seconds_remaining < 60   # triggers ACCENT_RED in HUD.draw
+        assert st.seconds_remaining < 60   # triggers DANGER_RED in HUD.draw
+
+    def test_timer_format_above_300s_uses_primary_color_range(self):
+        """Above 300 s (5 min) the timer is white (TEXT_PRIMARY).
+
+        The HUD uses _TIMER_WARN_SECS = 300 as the upper boundary:
+          seconds_remaining > 300  → TEXT_PRIMARY
+        """
+        st = HUDState(seconds_remaining=301.0)
+        assert st.seconds_remaining > 300   # TEXT_PRIMARY used in HUD.draw
 
     def test_timer_format_above_60s_normal(self):
+        """120 s is in the amber range (60 < x ≤ 300), NOT the white range.
+
+        This replaces the previous (misleading) assertion that 120 s is
+        'normal/white'.  The correct white threshold is > 300 s.
+        """
         st = HUDState(seconds_remaining=120.0)
-        assert st.seconds_remaining >= 60  # TEXT_BRIGHT used in HUD.draw
+        assert 60 < st.seconds_remaining <= 300  # ACCENT_AMBER used in HUD.draw
+
+    def test_timer_below_300s_is_amber_or_red_range(self):
+        """Any value ≤ 300 s must NOT use the white TEXT_PRIMARY colour."""
+        st = HUDState(seconds_remaining=299.0)
+        assert not (st.seconds_remaining > 300)
+
+    def test_timer_at_exactly_300s_is_amber_not_white(self):
+        """Boundary: 300.0 is NOT above 300, so it switches to amber."""
+        st = HUDState(seconds_remaining=300.0)
+        # > 300 is False, so amber (ACCENT_AMBER) is used
+        assert not (st.seconds_remaining > 300)
+
+    def test_timer_at_exactly_60s_is_red_not_amber(self):
+        """Boundary: 60.0 is NOT above 60, so it switches to red."""
+        st = HUDState(seconds_remaining=60.0)
+        # > 60 is False, so DANGER_RED is used
+        assert not (st.seconds_remaining > 60)
 
     def test_timer_mm_ss_format(self):
         """Validate the integer maths used to format the timer string."""

@@ -13,7 +13,7 @@ State machine
                                       │
                             (elapsed ≥ EXTRACTION_CHANNEL_SECS)
                                       ▼
-                                    DONE  ──► publishes extraction_success
+                                    DONE  ──► publishes player_extracted
 
     Any state except DONE ──(round_end received)──► publishes extraction_failed
 
@@ -24,9 +24,9 @@ Events published
 ``extraction_started()``
     Channel begins (player held F while standing in zone).
 ``extraction_cancelled()``
-    Channel was interrupted by movement or key release.
-``extraction_success(loot, time_survived)``
-    Channel completed successfully; payload carries loot snapshot and elapsed time.
+    Channel was interrupted by movement, key release, or player death.
+``player_extracted(inventory_snapshot)``
+    Channel completed successfully; payload carries an inventory snapshot list.
 ``extraction_failed()``
     Round timer reached zero before extraction completed.
 """
@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import enum
 
-from src.core.constants import (
+from src.constants import (
     EXTRACTION_CHANNEL_SECS,
     KEY_EXTRACT,
     MOVE_THRESHOLD,
@@ -61,7 +61,7 @@ class ExtractionSystem:
         zone:       The :class:`~src.map.extraction_zone.ExtractionZone` for
                     this round's map.
         channel_duration: Seconds the player must hold F without moving.
-                    Defaults to :data:`~src.core.constants.EXTRACTION_CHANNEL_SECS`.
+                    Defaults to :data:`~src.constants.EXTRACTION_CHANNEL_SECS`.
     """
 
     def __init__(
@@ -115,6 +115,13 @@ class ExtractionSystem:
                 self._bus.publish("extraction_started")
 
         elif self.state is ExtractionState.CHANNELING:
+            # Dead player cancels channeling immediately.
+            if not getattr(player, 'alive', True):
+                self.state = ExtractionState.IN_ZONE
+                self._channel_elapsed = 0.0
+                self._bus.publish("extraction_cancelled")
+                return
+
             if is_moving or not key_held:
                 # Any movement or releasing F cancels the channel.
                 self.state = ExtractionState.IN_ZONE
@@ -125,10 +132,11 @@ class ExtractionSystem:
                 if self._channel_elapsed >= self._channel_duration:
                     self._channel_elapsed = self._channel_duration
                     self.state = ExtractionState.DONE
+                    # Snapshot the live inventory (a shallow copy).
+                    inventory_snapshot = list(player.inventory)
                     self._bus.publish(
-                        "extraction_success",
-                        loot=list(player.inventory),
-                        time_survived=self._elapsed_seconds_from_outside,
+                        "player_extracted",
+                        inventory_snapshot=inventory_snapshot,
                     )
                     self._bus.publish(
                         "player_extracted",
@@ -136,7 +144,7 @@ class ExtractionSystem:
                     )
 
     # ------------------------------------------------------------------
-    # Properties read by UI widgets
+    # Properties read by UI widgets and GameScene
     # ------------------------------------------------------------------
 
     @property
@@ -152,6 +160,21 @@ class ExtractionSystem:
         return min(self._channel_elapsed / self._channel_duration, 1.0)
 
     @property
+    def extraction_progress(self) -> float:
+        """Alias for :attr:`channel_progress` — used by HUD/GameScene."""
+        return self.channel_progress
+
+    @property
+    def seconds_remaining(self) -> float:
+        """Timer placeholder — this FSM does not own the round timer.
+
+        The round timer is managed by :class:`~src.systems.extraction.ExtractionSystem`
+        (the simpler system) or by a dedicated ``RoundTimer``.  Returns ``0.0``
+        so HUD code that guards with ``hasattr`` falls back gracefully.
+        """
+        return 0.0
+
+    @property
     def is_done(self) -> bool:
         """``True`` once extraction completed successfully."""
         return self.state is ExtractionState.DONE
@@ -164,18 +187,17 @@ class ExtractionSystem:
             ExtractionState.CHANNELING,
         )
 
+    def is_player_in_zone(self, player: Player) -> bool:
+        """Return ``True`` if *player*'s rect overlaps the zone.
+
+        Provided for compatibility with the HUD state builder and the simpler
+        :class:`~src.systems.extraction.ExtractionSystem` interface.
+        """
+        return self._zone.rect.colliderect(player.rect)
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
-
-    # NOTE: The ExtractionSystem does not own a timer reference; the
-    # ``time_survived`` in the success payload is computed by GameScene
-    # from RoundTimer.  This property is a sentinel so the publish call
-    # above doesn't break — GameScene overrides it via the event handler.
-    @property
-    def _elapsed_seconds_from_outside(self) -> float:
-        """Placeholder; real value injected by GameScene's event handler."""
-        return 0.0
 
     def _on_round_end(self, **_kwargs) -> None:
         """React to ``round_end``; emit ``extraction_failed`` if not done."""
