@@ -368,11 +368,11 @@ class TestButtonRouting:
         )
 
     def test_queue_next_round_calls_replace(self, scene, mock_scene_manager):
-        """Button 0 — QUEUE NEXT ROUND — must call scene_manager.replace."""
+        """Button 0 — QUEUE NEXT ROUND — must call scene_manager.replace_all."""
         scene.focused_button_index = 0
         with patch("src.scenes.post_round.GameScene"):
             scene.handle_events([self._enter()])
-        mock_scene_manager.replace.assert_called_once()
+        mock_scene_manager.replace_all.assert_called_once()
 
     def test_queue_next_round_passes_game_scene_instance(self, scene, mock_scene_manager):
         scene.focused_button_index = 0
@@ -394,11 +394,11 @@ class TestButtonRouting:
         assert MockHomeBase.called
 
     def test_exit_to_main_menu_calls_replace(self, scene, mock_scene_manager):
-        """Button 2 — EXIT TO MAIN MENU — must call scene_manager.replace."""
+        """Button 2 — EXIT TO MAIN MENU — must call scene_manager.replace_all."""
         scene.focused_button_index = 2
         with patch("src.scenes.post_round.MainMenu"):
             scene.handle_events([self._enter()])
-        mock_scene_manager.replace.assert_called_once()
+        mock_scene_manager.replace_all.assert_called_once()
 
     def test_exit_to_main_menu_passes_main_menu_instance(self, scene, mock_scene_manager):
         scene.focused_button_index = 2
@@ -418,7 +418,7 @@ class TestButtonRouting:
         scene.focused_button_index = 0
         with patch("src.scenes.post_round.GameScene") as MockGameScene:
             scene.handle_events([self._enter()])
-        passed = mock_scene_manager.replace.call_args[0][0]
+        passed = mock_scene_manager.replace_all.call_args[0][0]
         assert passed is MockGameScene.return_value
 
 

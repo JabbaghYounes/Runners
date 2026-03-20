@@ -7,7 +7,7 @@ _VALID_STATUSES = frozenset({"success", "timeout", "eliminated"})
 @dataclass
 class RoundSummary:
     extraction_status: str
-    extracted_items: list
+    extracted_items: list[Item]
     xp_earned: int
     money_earned: int
     kills: int
@@ -20,9 +20,17 @@ class RoundSummary:
     challenge_bonus_money: int = 0
     challenge_bonus_items: list = field(default_factory=list)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.extraction_status not in _VALID_STATUSES:
             raise ValueError(
                 f"extraction_status must be one of {sorted(_VALID_STATUSES)!r}; "
                 f"got {self.extraction_status!r}"
             )
+
+    @property
+    def total_loot_value(self) -> int:
+        """Sum of monetary_value across all extracted items."""
+        return sum(
+            int(getattr(item, "monetary_value", getattr(item, "value", 0)))
+            for item in self.extracted_items
+        )

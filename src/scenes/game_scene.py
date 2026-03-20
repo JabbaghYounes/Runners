@@ -828,11 +828,58 @@ class GameScene(BaseScene):
     def _on_enemy_killed(self, **kwargs: Any) -> None:
         self._kill_count = getattr(self, '_kill_count', 0) + 1
         xp = kwargs.get('xp_reward', 0)
-        if self._xp_system and xp:
-            old_level = self._xp_system.level
-            self._xp_system.award(xp)
-            if self._xp_system.level > old_level:
-                self._event_bus.emit('level.up', level=self._xp_system.level)
+        self._round_kills += 1
+        if xp:
+            self._round_kill_xp += xp
+
+    def _build_summary(self, status: str) -> "Any":
+        """Snapshot round statistics into a RoundSummary ready for PostRound."""
+        from src.core.round_summary import RoundSummary
+        from src.constants import EXTRACTION_XP
+
+        level_before = self._xp_system.level if self._xp_system else 1
+
+        if status == "success":
+            items: list = []
+            if hasattr(self, 'player') and hasattr(self.player, 'inventory'):
+                inv = self.player.inventory
+                if hasattr(inv, 'get_items'):
+                    items = list(inv.get_items())
+                elif isinstance(inv, list):
+                    items = list(inv)
+            bonus = self.loot_value_bonus
+            base_value = sum(
+                getattr(item, 'monetary_value', getattr(item, 'value', 0))
+                for item in items
+            )
+            money_earned = int(base_value * (1.0 + bonus))
+            xp_earned = self._round_kill_xp + EXTRACTION_XP
+        else:
+            items = []
+            money_earned = 0
+            xp_earned = 0
+
+        # Query challenge system for completion counts
+        challenges_completed = 0
+        challenges_total = 0
+        if self._challenge is not None:
+            try:
+                active = self._challenge.get_active_challenges()
+                challenges_completed = sum(1 for c in active if getattr(c, 'completed', False))
+                challenges_total = len(active)
+            except Exception:
+                pass
+
+        return RoundSummary(
+            extraction_status=status,
+            extracted_items=items,
+            xp_earned=xp_earned,
+            money_earned=money_earned,
+            kills=self._round_kills,
+            challenges_completed=challenges_completed,
+            challenges_total=challenges_total,
+            level_before=level_before,
+        )
 
     def _collect_loot(self) -> list:
         """Return the player's current inventory items as a list."""
