@@ -115,7 +115,8 @@ class Player(Entity):
         # Health / armor
         self.max_health: int = max_health
         self.health: int = max_health
-        self.armor: int = 0
+        self.base_armor: int = 0
+        self.armor: int = 0      # effective armor — recalculated from equipped item
         self.max_armor: int = 100
 
         # Buff system
@@ -171,14 +172,44 @@ class Player(Entity):
         return gained
 
     def take_damage(self, amount: int) -> int:
-        """Apply damage after armor reduction. Returns effective HP lost."""
-        effective = max(0, amount - self.armor)
-        self.health = max(0, self.health - effective)
+        """Apply *amount* HP of damage directly.
+
+        Armor reduction is performed upstream by :class:`CombatSystem` via
+        :meth:`get_effective_armor` before this method is called, so no
+        second reduction is applied here.
+
+        Returns:
+            The amount of damage applied (≥ 0).
+        """
+        self.health = max(0, self.health - amount)
         if self.health == 0 and self.alive:
             self.alive = False
             from src.core.event_bus import event_bus as _bus
             _bus.emit("player_killed", victim=self)
-        return effective
+        return amount
+
+    # ------------------------------------------------------------------
+    # Armor helpers
+    # ------------------------------------------------------------------
+
+    def get_effective_armor(self) -> float:
+        """Return the player's current effective armor value.
+
+        Called by :class:`CombatSystem` before computing hit damage.
+        Returns a ``float`` so subclasses can apply fractional multipliers
+        (e.g. Iron Skin at low health).
+        """
+        return float(self.armor)
+
+    def _recalculate_armor(self) -> None:
+        """Recompute ``self.armor`` from the equipped armor item.
+
+        Called automatically whenever :meth:`Inventory.equip_armor` or
+        :meth:`Inventory.unequip_armor` fires the ``on_armor_changed`` hook.
+        """
+        equipped = getattr(self.inventory, 'equipped_armor', None)
+        rating = equipped.armor_rating if equipped is not None else 0
+        self.armor = self.base_armor + rating
 
     # ------------------------------------------------------------------
     # Buffs
