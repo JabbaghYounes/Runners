@@ -17,11 +17,22 @@ Typical usage::
 
 from __future__ import annotations
 
+import os
+import sys
 from typing import List, Optional
 
 import pygame
 
 from src.scenes.base_scene import BaseScene
+
+# Set RUNNERS_DEBUG=1 in the environment to enable verbose scene-stack logging.
+_DEBUG: bool = os.environ.get("RUNNERS_DEBUG", "") == "1"
+
+
+def _dbg(msg: str) -> None:
+    """Print *msg* to stderr when debug mode is active (RUNNERS_DEBUG=1)."""
+    if _DEBUG:
+        print(f"[Runners] {msg}", file=sys.stderr)
 
 
 class _CallableBool(int):
@@ -54,6 +65,7 @@ class SceneManager:
         The previously active scene (if any) receives ``on_pause``.
         The new scene receives ``on_enter``.
         """
+        _dbg(f"push → {scene.__class__.__name__}")
         if self._stack:
             self._stack[-1].on_pause()
         self._stack.append(scene)
@@ -69,8 +81,10 @@ class SceneManager:
         if not self._stack:
             return None
         scene = self._stack.pop()
+        _dbg(f"pop  ← {scene.__class__.__name__}")
         scene.on_exit()
         if self._stack:
+            _dbg(f"resume → {self._stack[-1].__class__.__name__}")
             self._stack[-1].on_resume()
         return scene
 
@@ -82,7 +96,10 @@ class SceneManager:
         """
         if self._stack:
             old = self._stack.pop()
+            _dbg(f"replace {old.__class__.__name__} → {scene.__class__.__name__}")
             old.on_exit()
+        else:
+            _dbg(f"replace (empty) → {scene.__class__.__name__}")
         self._stack.append(scene)
         scene.on_enter()
 
@@ -94,6 +111,7 @@ class SceneManager:
         ``on_exit``; the new scene receives ``on_enter``.  The scene beneath
         the previous top does *not* receive ``on_resume`` (intentional).
         """
+        _dbg(f"replace_all → {scene.__class__.__name__} (clearing {len(self._stack)} scene(s))")
         while self._stack:
             old = self._stack.pop()
             old.on_exit()

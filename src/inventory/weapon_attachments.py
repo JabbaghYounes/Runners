@@ -24,7 +24,7 @@ def attach_to_weapon(
     """Attach *attachment* to *weapon*.
 
     This is a thin wrapper around :meth:`Weapon.attach` that also
-    validates types.
+    validates types and emits ``weapon_attachment_changed`` on success.
 
     Args:
         weapon:     The weapon to modify.
@@ -38,7 +38,12 @@ def attach_to_weapon(
         return False
     if not isinstance(attachment, Attachment):
         return False
-    return weapon.attach(attachment, slot_type=slot_type)
+    result = weapon.attach(attachment, slot_type=slot_type)
+    if result:
+        from src.core.event_bus import event_bus as _event_bus
+        actual_slot = slot_type if slot_type is not None else attachment.slot_type
+        _event_bus.emit("weapon_attachment_changed", weapon=weapon, slot_type=actual_slot)
+    return result
 
 
 def detach_from_weapon(
@@ -47,12 +52,19 @@ def detach_from_weapon(
 ) -> Attachment | None:
     """Detach and return the attachment in *slot_type* from *weapon*.
 
+    Emits ``weapon_attachment_changed`` on the global EventBus when an
+    attachment is successfully removed.
+
     Returns ``None`` if *weapon* is not a :class:`Weapon` or the slot
     was empty.
     """
     if not isinstance(weapon, Weapon):
         return None
-    return weapon.detach(slot_type)
+    removed = weapon.detach(slot_type)
+    if removed is not None:
+        from src.core.event_bus import event_bus as _event_bus
+        _event_bus.emit("weapon_attachment_changed", weapon=weapon, slot_type=slot_type)
+    return removed
 
 
 # ---------------------------------------------------------------------------
@@ -63,9 +75,23 @@ def detach_from_weapon(
 def weapon_to_save_dict(weapon: Weapon) -> dict[str, Any]:
     """Serialize a weapon (including its equipped attachments) to a dict
     suitable for JSON persistence.
+
+    The dict includes all fields required to reconstruct the :class:`Weapon`
+    via :func:`src.inventory.item.make_item`, plus the attachment data.
     """
+    rarity_str = weapon.rarity.value if hasattr(weapon.rarity, "value") else str(weapon.rarity)
     data: dict[str, Any] = {
         "item_id": weapon.item_id,
+        "item_type": "weapon",
+        "name": weapon.name,
+        "rarity": rarity_str,
+        "value": weapon.value,
+        "weight": weapon.weight,
+        "sprite": weapon.sprite,
+        "stats": dict(weapon.stats),
+        "damage": weapon.damage,
+        "fire_rate": weapon.fire_rate,
+        "magazine_size": weapon.magazine_size,
         "mod_slots": list(weapon.mod_slots),
         "attachments": {},
     }
