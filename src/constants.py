@@ -132,6 +132,18 @@ PVP_FRIENDLY_FIRE: bool = True
 PVP_AGENT_AGGRO_RANGE: float = 300.0
 PVP_AGENT_SHOOT_RANGE: float = 150.0
 
+# ── Extraction constants ──────────────────────────────────────────────────────
+KEY_EXTRACT             = pygame.K_f      # hold this key to channel extraction
+EXTRACTION_CHANNEL_SECS = 3.0             # seconds to hold still in zone
+MOVE_THRESHOLD          = 5.0             # px/s below which player is "stationary"
+
+# ── Extraction zone visuals ───────────────────────────────────────────────────
+EXTRACTION_ZONE_COLOR        = (  0, 255, 180)   # teal highlight fill
+EXTRACTION_ZONE_ALPHA        = 60                # base fill alpha (0–255)
+EXTRACTION_ZONE_BORDER_COLOR = NEON_CYAN         # border colour
+EXTRACTION_ZONE_PULSE_SPEED  = 2.0               # pulses per second
+EXTRACTION_CHANNEL_BAR_COLOR = NEON_GREEN        # progress bar fill
+
 # ── Default key bindings (fallback when settings.json is missing a binding) ───
 # Bindable actions: move_left, move_right, jump, crouch, sprint, slide,
 #                  reload, interact, inventory, map, pause

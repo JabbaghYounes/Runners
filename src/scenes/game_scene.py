@@ -161,6 +161,14 @@ class GameScene(BaseScene):
         except Exception:
             self._audio_sys = None
 
+        # Extraction zone — stored separately for rendering.
+        try:
+            from src.map.extraction_zone import ExtractionZone
+            _ext_rect = self.tile_map.extraction_rect or pygame.Rect(0, 0, 32, 32)
+            self._extraction_zone = ExtractionZone(rect=_ext_rect)
+        except Exception:
+            self._extraction_zone = None
+
         # Extraction system
         try:
             from src.systems.extraction import ExtractionSystem
@@ -398,11 +406,15 @@ class GameScene(BaseScene):
             self._update_stub(dt)
 
     def _update_full(self, dt: float) -> None:
+        self._pulse_time += dt
         try:
+            from src.constants import KEY_EXTRACT
             keys = pygame.key.get_pressed()
             self._e_held = bool(keys[pygame.K_e])
+            self._extract_held = bool(keys[KEY_EXTRACT])
         except Exception:
             self._e_held = False
+            self._extract_held = False
 
         # Round timer
         if self._round_timer:
