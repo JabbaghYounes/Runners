@@ -75,3 +75,4 @@ class HUDState:
     in_extraction_zone: bool = False
     extraction_progress: float = 0.0
     currency: int = 0
+    active_quick_slot: int = -1

@@ -56,9 +56,15 @@ _QUICKSLOTS_X = SCREEN_W - _QUICKSLOTS_W - MARGIN
 _QUICKSLOTS_Y = SCREEN_H - _QUICKSLOT_SIZE - MARGIN
 
 # Transient effect timers
-_DAMAGE_FLASH_DURATION  = 0.3
+_DAMAGE_FLASH_DURATION   = 0.3
 _LEVELUP_BANNER_DURATION = 1.5
-_BUFF_PULSE_THRESHOLD   = 3.0
+_BUFF_PULSE_THRESHOLD    = 3.0
+_ZONE_LABEL_DURATION     = 2.5
+_HEAL_FLASH_DURATION     = 0.4
+
+# Timer colour thresholds (seconds remaining)
+_TIMER_WARN_SECS   = 300   # 5 min → switch to amber
+_TIMER_DANGER_SECS = 60    # 1 min → switch to red
 
 # Color constants from feature branch
 ACCENT_AMBER = (255, 184, 0)
@@ -83,6 +89,7 @@ class HUD:
         self._level_up_timer: float = 0.0
         self._zone_label_timer: float = 0.0
         self._zone_label: str = ""
+        self._heal_flash_timer: float = 0.0
 
         # Fonts (lazy)
         self._font_lg = None
@@ -96,6 +103,8 @@ class HUD:
         event_bus.subscribe('level.up',       self._on_level_up)
         event_bus.subscribe('level_up',       self._on_level_up)
         event_bus.subscribe('zone_entered',   self._on_zone_entered)
+        event_bus.subscribe('item_used',      self._on_item_used)
+        event_bus.subscribe('player_healed',  self._on_item_used)
 
     def _on_player_damaged(self, **payload) -> None:
         self._damage_flash_timer = _DAMAGE_FLASH_DURATION
@@ -109,21 +118,31 @@ class HUD:
         zone = kwargs.get('zone')
         if zone is not None:
             self._zone_label = getattr(zone, 'name', '')
-            self._zone_label_timer = 2.5
+            self._zone_label_timer = _ZONE_LABEL_DURATION
+
+    def _on_item_used(self, **payload) -> None:
+        """Trigger a brief green heal flash when an item is used or the player is healed."""
+        self._heal_flash_timer = _HEAL_FLASH_DURATION
 
     def teardown(self) -> None:
         """Unsubscribe from EventBus."""
-        for event in ('player.damaged', 'player_damaged', 'level.up', 'level_up', 'zone_entered'):
+        for event in ('player.damaged', 'player_damaged'):
             try:
                 self._event_bus.unsubscribe(event, self._on_player_damaged)
             except Exception:
                 pass
+        for event in ('level.up', 'level_up'):
             try:
                 self._event_bus.unsubscribe(event, self._on_level_up)
             except Exception:
                 pass
+        try:
+            self._event_bus.unsubscribe('zone_entered', self._on_zone_entered)
+        except Exception:
+            pass
+        for event in ('item_used', 'player_healed'):
             try:
-                self._event_bus.unsubscribe(event, self._on_zone_entered)
+                self._event_bus.unsubscribe(event, self._on_item_used)
             except Exception:
                 pass
 
@@ -141,6 +160,8 @@ class HUD:
             self._level_up_timer = max(0.0, self._level_up_timer - dt)
         if self._zone_label_timer > 0:
             self._zone_label_timer = max(0.0, self._zone_label_timer - dt)
+        if self._heal_flash_timer > 0:
+            self._heal_flash_timer = max(0.0, self._heal_flash_timer - dt)
 
         # Lazy-init sub-widgets
         if self._minimap is None:
@@ -182,9 +203,17 @@ class HUD:
         if self._challenge_widget:
             self._challenge_widget.draw(surface)
 
-        # 8. Transient effects
+        # 8. Zone name overlay (fires on zone_entered event)
+        self._draw_zone_label(surface)
+
+        # 9. Extraction prompt (while player stands in extraction zone)
+        self._draw_extraction_prompt(surface, state)
+
+        # 10. Transient effects
         if self._damage_flash_timer > 0:
             self._draw_damage_vignette(surface)
+        if self._heal_flash_timer > 0:
+            self._draw_heal_vignette(surface)
         if self._levelup_banner_timer > 0:
             self._draw_levelup_banner(surface)
 
@@ -284,11 +313,11 @@ class HUD:
         ss = secs % 60
         timer_str = f'{mm:02d}:{ss:02d}'
 
-        if state.seconds_remaining > 120:
+        if state.seconds_remaining > _TIMER_WARN_SECS:    # > 5 min: white
             color = TEXT_PRIMARY
-        elif state.seconds_remaining > 30:
+        elif state.seconds_remaining > _TIMER_DANGER_SECS: # > 1 min: amber
             color = ACCENT_AMBER
-        else:
+        else:                                               # ≤ 1 min: red
             color = DANGER_RED
 
         panel_rect = pygame.Rect(
@@ -359,6 +388,7 @@ class HUD:
             icon_slot = IconSlot(
                 rect=slot_rect, icon=icon, label='',
                 hotkey=str(i + 1), count=count, font=self._font_sm,
+                selected=(i == state.active_quick_slot),
             )
             icon_slot.draw(surface)
 
@@ -396,3 +426,82 @@ class HUD:
         if alpha < 255:
             banner_surf.set_alpha(alpha)
         surface.blit(banner_surf, (blit_x, blit_y))
+
+    def _draw_zone_label(self, surface: pygame.Surface) -> None:
+        """Render the zone name as a centered banner when zone_entered is active.
+
+        Fades out proportionally as _zone_label_timer counts down to zero.
+        """
+        if self._zone_label_timer <= 0 or not self._zone_label:
+            return
+        if not self._fonts_ready:
+            return
+        alpha_ratio = min(1.0, self._zone_label_timer / _ZONE_LABEL_DURATION)
+        alpha = int(255 * alpha_ratio)
+        font_zone = pygame.font.SysFont('monospace', 28, bold=True)
+        label_surf = font_zone.render(self._zone_label, True, TEXT_BRIGHT)
+        if alpha < 255:
+            label_surf.set_alpha(alpha)
+        bg_w = label_surf.get_width() + 2 * PADDING
+        bg_h = label_surf.get_height() + PADDING
+        bg_rect = pygame.Rect(
+            SCREEN_W // 2 - bg_w // 2,
+            SCREEN_H // 2 - bg_h // 2,
+            bg_w, bg_h,
+        )
+        Panel(bg_rect, alpha=int(200 * alpha_ratio)).draw(surface)
+        blit_x = bg_rect.x + (bg_w - label_surf.get_width()) // 2
+        blit_y = bg_rect.y + (bg_h - label_surf.get_height()) // 2
+        surface.blit(label_surf, (blit_x, blit_y))
+
+    def _draw_extraction_prompt(self, surface: pygame.Surface, state: "HUDState") -> None:
+        """Render the HOLD E TO EXTRACT prompt and progress bar when in the extraction zone.
+
+        Displayed as a panel anchored near the bottom-centre of the screen.
+        """
+        if not state.in_extraction_zone:
+            return
+        if not self._fonts_ready:
+            return
+        prompt_w, prompt_h = 300, 64
+        prompt_x = SCREEN_W // 2 - prompt_w // 2
+        prompt_y = SCREEN_H - prompt_h - 40
+        panel_rect = pygame.Rect(prompt_x, prompt_y, prompt_w, prompt_h)
+        Panel(panel_rect, border_color=ACCENT_CYAN).draw(surface)
+
+        Label(
+            text='HOLD E TO EXTRACT', font=self._font_lg,
+            color=ACCENT_CYAN,
+            pos=(SCREEN_W // 2, panel_rect.y + 10),
+            anchor='midtop',
+        ).draw(surface)
+
+        bar_rect = pygame.Rect(
+            panel_rect.x + PADDING,
+            panel_rect.y + 38,
+            panel_rect.width - 2 * PADDING,
+            10,
+        )
+        ProgressBar(
+            rect=bar_rect,
+            value=state.extraction_progress,
+            max_value=1.0,
+            fill_color=ACCENT_CYAN,
+            bg_color=(30, 34, 50),
+            border_color=BORDER_DIM,
+        ).draw(surface)
+
+    def _draw_heal_vignette(self, surface: pygame.Surface) -> None:
+        """Render a brief green screen-edge flash when the player uses a healing item."""
+        intensity = self._heal_flash_timer / _HEAL_FLASH_DURATION
+        alpha = int(120 * intensity)
+        if alpha <= 0:
+            return
+        vignette = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        border = 50
+        green = (32, 255, 64, alpha)
+        pygame.draw.rect(vignette, green, pygame.Rect(0, 0, SCREEN_W, border))
+        pygame.draw.rect(vignette, green, pygame.Rect(0, SCREEN_H - border, SCREEN_W, border))
+        pygame.draw.rect(vignette, green, pygame.Rect(0, 0, border, SCREEN_H))
+        pygame.draw.rect(vignette, green, pygame.Rect(SCREEN_W - border, 0, border, SCREEN_H))
+        surface.blit(vignette, (0, 0))
