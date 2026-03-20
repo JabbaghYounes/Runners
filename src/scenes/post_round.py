@@ -10,7 +10,7 @@ Navigation buttons:
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import logging
 
 import pygame
 
@@ -44,6 +44,7 @@ _SFX_BY_STATUS: dict[str, str] = {
 
 # How many buttons are shown on this screen
 _NUM_BUTTONS = 3
+_log = logging.getLogger(__name__)
 
 # Map rarity string → display colour
 _RARITY_COLOR: dict[str, tuple[int, int, int]] = {
@@ -121,21 +122,19 @@ class PostRound:
 
     def __init__(
         self,
-        summary: RoundSummary | None = None,
-        blurred_bg: pygame.Surface | None = None,
-        xp_system: object = None,
-        currency: object = None,
-        save_manager: object = None,
-        scene_manager: object = None,
-        asset_manager: object = None,
-        audio_system: object = None,
-        # Extra named args used by GameScene
-        settings: object = None,
-        assets: object = None,
-        event_bus: object = None,
-        home_base: object = None,
-        # Legacy positional-style kwargs (kept for backward compatibility)
-        sm: object = None,
+        summary: "RoundSummary | None" = None,
+        blurred_bg: "pygame.Surface | None" = None,
+        xp_system=None,
+        currency=None,
+        save_manager=None,
+        scene_manager=None,
+        asset_manager=None,
+        audio_system=None,
+        challenge_system=None,
+        # Legacy positional args
+        sm=None,
+        settings=None,
+        assets=None,
         extracted: bool = False,
         loot_items: list | None = None,
     ) -> None:
@@ -146,22 +145,12 @@ class PostRound:
         if sm is not None and summary is None:
             self._sm = sm
             self._settings = settings
-            self._assets = assets or asset_manager
-            self._event_bus = event_bus
-            self._home_base = home_base
-            self._xp_system = xp_system
-            self._currency = currency
-            self._save_manager = save_manager
-            self._audio_system = audio_system
-            # Minimal display state (no real summary to render)
-            self.summary: RoundSummary | None = None
-            self.focused_button_index: int = 0
-            self.show_level_up: bool = False
-            self.total_loot_value: int = 0
-            self._xp_before: int = 0
-            self._xp_to_next_before: int = 100
-            self._fonts: dict[str, pygame.font.Font] = {}
-            self._btn_rects: list[pygame.Rect] = []
+            self._assets = assets
+            self.summary = None
+            self.focused_button_index = 0
+            self.show_level_up = False
+            self.total_loot_value = 0
+            self._completed_challenges: list = []
             return
 
         # ------------------------------------------------------------------
@@ -178,27 +167,42 @@ class PostRound:
         self._audio_system = audio_system
         self.blurred_bg = blurred_bg
 
-        # Snapshot XP position BEFORE awarding so the progress bar can
-        # visualise the before → after transition within the level band.
-        self._xp_before: int = xp_system.xp if xp_system else 0
-        self._xp_to_next_before: int = (
-            xp_system.xp_to_next_level() if xp_system else 100
-        )
+        # Store completed challenges for render-time display
+        self._completed_challenges: list = []
 
-        # ------------------------------------------------------------------
-        # Commit progression exactly once
-        # ------------------------------------------------------------------
-        if xp_system is not None and summary is not None:
+        # --- Commit base progression ---
+        if xp_system and summary:
             xp_system.award(summary.xp_earned)
-            summary.level_after = xp_system.level
-        if currency is not None and summary is not None:
+        if currency and summary:
             currency.add(summary.money_earned)
-        if save_manager is not None:
-            save_manager.save(
-                xp_system=xp_system,
-                currency=currency,
-                home_base=home_base,
-            )
+
+        # --- Apply challenge bonus rewards (idempotent: runs once in __init__) ---
+        if challenge_system is not None and summary is not None:
+            try:
+                completed = challenge_system.get_completed_challenges()
+            except Exception as exc:
+                _log.warning("[PostRound] get_completed_challenges() failed: %s", exc)
+                completed = []
+
+            self._completed_challenges = list(completed)
+
+            for ch in completed:
+                if xp_system:
+                    xp_system.award(ch.reward_xp)
+                if currency:
+                    currency.add(ch.reward_money)
+                summary.challenge_bonus_xp += ch.reward_xp
+                summary.challenge_bonus_money += ch.reward_money
+
+                if ch.reward_item_id:
+                    self._grant_item_reward(ch, summary, currency)
+
+        # Update level_after after ALL XP has been awarded
+        if xp_system and summary:
+            summary.level_after = xp_system.level
+
+        if save_manager:
+            save_manager.save()
 
         # Play outcome SFX (guarded: audio may be None or uninitialised)
         if audio_system is not None and summary is not None:
@@ -213,16 +217,42 @@ class PostRound:
         # ------------------------------------------------------------------
         self.summary: RoundSummary | None = summary
         self.focused_button_index: int = 0
-        self.show_level_up: bool = bool(
-            summary and summary.level_after > summary.level_before
+        self.show_level_up: bool = (
+            summary.level_after > summary.level_before if summary else False
+        )
+        self.total_loot_value: int = sum(
+            getattr(item, 'monetary_value', 0)
+            for item in (summary.extracted_items if summary else [])
         )
         self.total_loot_value: int = summary.total_loot_value if summary else 0
 
-        # Lazily populated on first render
-        self._fonts: dict[str, pygame.font.Font] = {}
-        self._btn_rects: list[pygame.Rect] = []
-
     # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _grant_item_reward(self, ch: object, summary: "RoundSummary", currency: object) -> None:
+        """Create the reward item and append it to the summary, or fall back to money."""
+        _FALLBACK_MONEY = 50
+        item_id = getattr(ch, 'reward_item_id', None)
+        ch_id = getattr(ch, 'id', '?')
+        try:
+            from src.inventory.item_database import ItemDatabase
+            item = ItemDatabase.instance().create(item_id)
+            summary.extracted_items.append(item)
+            summary.challenge_bonus_items.append(item_id)
+        except Exception as exc:
+            _log.warning(
+                "[PostRound] Unknown reward_item_id %r for challenge %r: %s — "
+                "granting %d money fallback instead.",
+                item_id,
+                ch_id,
+                exc,
+                _FALLBACK_MONEY,
+            )
+            if currency:
+                currency.add(_FALLBACK_MONEY)
+            summary.challenge_bonus_money += _FALLBACK_MONEY
+
     # Scene interface
     # ------------------------------------------------------------------
 
@@ -259,226 +289,66 @@ class PostRound:
                         break
 
     def render(self, surface: pygame.Surface) -> None:
-        """Draw the full post-round screen onto *surface*."""
-        self._ensure_fonts()
-        self._ensure_button_rects()
+        """Draw the post-round screen onto *surface*."""
+        if self.blurred_bg:
+            surface.blit(self.blurred_bg, (0, 0))
 
-        # Background fill
-        surface.fill(BG_DEEP)
+        font = pygame.font.Font(None, 36)
+        small_font = pygame.font.Font(None, 24)
 
-        # Main panel card
-        self._draw_panel(surface)
-
-        s = self.summary
-        if s is None:
-            # Minimal legacy render (no summary data)
-            img = self._fonts["lg"].render("ROUND ENDED", True, TEXT_PRIMARY)
-            surface.blit(img, img.get_rect(center=(SCREEN_W // 2, SCREEN_H // 2)))
-            self._draw_buttons(surface)
-            return
-
-        success = s.extraction_status == "success"
-
-        # ── Header ────────────────────────────────────────────────────────
-        hdr_text = "EXTRACTED" if success else "FAILED TO EXTRACT"
-        hdr_color = ACCENT_GREEN if success else DANGER_RED
-        hdr_surf = self._fonts["lg"].render(hdr_text, True, hdr_color)
-        surface.blit(hdr_surf, hdr_surf.get_rect(center=(SCREEN_W // 2, _HDR_Y)))
-
-        # Sub-header explaining failure (skipped on success)
-        if not success:
-            if s.extraction_status == "timeout":
-                sub_text = "Round timer expired — all loot lost"
-            else:
-                sub_text = "You were eliminated — all loot lost"
-            sub_surf = self._fonts["sm"].render(sub_text, True, TEXT_SECONDARY)
-            surface.blit(sub_surf, sub_surf.get_rect(center=(SCREEN_W // 2, _SUB_Y)))
-
-        # ── Separator 1 ───────────────────────────────────────────────────
-        pygame.draw.line(surface, BORDER_DIM, (_CL, _RULE1_Y), (_CR, _RULE1_Y), 1)
-
-        # ── Loot section ──────────────────────────────────────────────────
-        loot_lbl = self._fonts["xs"].render("LOOT", True, TEXT_SECONDARY)
-        surface.blit(loot_lbl, (_CL, _LOOT_LABEL_Y))
-
-        if success and s.extracted_items:
-            self._draw_items(surface, s.extracted_items)
+        if self.summary:
+            label = self.summary.extraction_status.upper()
         else:
-            msg = "All loot lost." if not success else "No items extracted."
-            msg_surf = self._fonts["md"].render(msg, True, TEXT_SECONDARY)
-            center_y = _ITEMS_Y + (_MAX_ITEM_ROWS * _ITEM_ROW_H) // 2
-            surface.blit(msg_surf, msg_surf.get_rect(center=(SCREEN_W // 2, center_y)))
+            label = "ROUND ENDED"
+        img = font.render(label, True, (255, 255, 255))
+        surface.blit(img, (100, 100))
 
-        # ── Separator 2 ───────────────────────────────────────────────────
-        pygame.draw.line(surface, BORDER_DIM, (_CL, _RULE2_Y), (_CR, _RULE2_Y), 1)
+        if self.summary:
+            y = 148
 
-        # ── Stats section ─────────────────────────────────────────────────
-        self._draw_stats(surface, s)
-
-        # ── XP progress bar ───────────────────────────────────────────────
-        if s.xp_earned > 0:
-            self._draw_xp_bar(surface)
-
-        # ── Level-up row ──────────────────────────────────────────────────
-        if self.show_level_up:
-            lvl_txt = f"LEVEL UP!   {s.level_before} → {s.level_after}"
-            lvl_surf = self._fonts["md"].render(lvl_txt, True, _ACCENT_AMBER)
-            surface.blit(lvl_surf, lvl_surf.get_rect(center=(SCREEN_W // 2, _LEVELUP_Y)))
-
-        # ── Navigation buttons ────────────────────────────────────────────
-        self._draw_buttons(surface)
-
-    # ------------------------------------------------------------------
-    # Private rendering helpers
-    # ------------------------------------------------------------------
-
-    def _draw_panel(self, surface: pygame.Surface) -> None:
-        """Draw the semi-transparent background card."""
-        r, g, b = BG_PANEL[:3]
-        panel_surf = pygame.Surface(_PANEL_RECT.size, pygame.SRCALPHA)
-        pygame.draw.rect(
-            panel_surf, (r, g, b, 230),
-            panel_surf.get_rect(), border_radius=8,
-        )
-        surface.blit(panel_surf, _PANEL_RECT.topleft)
-        pygame.draw.rect(surface, BORDER_DIM, _PANEL_RECT, width=1, border_radius=8)
-
-    def _draw_items(self, surface: pygame.Surface, items: list) -> None:
-        """Render extracted items list, clipping to _MAX_ITEM_ROWS."""
-        font = self._fonts["md"]
-        total = len(items)
-        # Reserve the last row for the "…and N more" overflow notice
-        if total > _MAX_ITEM_ROWS:
-            visible = items[: _MAX_ITEM_ROWS - 1]
-            remainder = total - len(visible)
-        else:
-            visible = items
-            remainder = 0
-
-        for i, item in enumerate(visible):
-            y = _ITEMS_Y + i * _ITEM_ROW_H
-            color = _rarity_color(item)
-
-            # Item name (left-aligned)
-            name_surf = font.render(item.name, True, color)
-            surface.blit(name_surf, (_CL + 8, y))
-
-            # Monetary value (right-aligned)
-            val = int(getattr(item, "monetary_value", getattr(item, "value", 0)))
-            val_surf = font.render(f"${val:,}", True, color)
-            surface.blit(val_surf, val_surf.get_rect(right=_CR, y=y))
-
-        if remainder > 0:
-            y = _ITEMS_Y + len(visible) * _ITEM_ROW_H
-            more_surf = self._fonts["xs"].render(
-                f"…and {remainder} more", True, TEXT_SECONDARY
+            # Challenge count summary
+            c_done = self.summary.challenges_completed
+            c_total = self.summary.challenges_total
+            count_surf = small_font.render(
+                f"Challenges: {c_done} / {c_total}", True, (200, 200, 200)
             )
-            surface.blit(more_surf, (_CL + 8, y))
+            surface.blit(count_surf, (100, y))
+            y += 28
 
-    def _draw_stats(self, surface: pygame.Surface, s: RoundSummary) -> None:
-        """Render the two-column stats grid."""
-        font = self._fonts["md"]
+            # Challenge bonus totals
+            bonus_xp = self.summary.challenge_bonus_xp
+            bonus_money = self.summary.challenge_bonus_money
+            if bonus_xp > 0 or bonus_money > 0:
+                bonus_surf = small_font.render(
+                    f"Challenge Bonus: +{bonus_xp} XP,  +{bonus_money} cr",
+                    True,
+                    (57, 255, 20),
+                )
+                surface.blit(bonus_surf, (100, y))
+                y += 24
 
-        # ── Left column ───────────────────────────────────────────────────
-        y = _STATS_Y
-        surface.blit(
-            font.render(f"XP earned:  +{s.xp_earned:,}", True, TEXT_PRIMARY),
-            (_CL, y),
-        )
-        y += _STAT_ROW_H
-        surface.blit(
-            font.render(f"Money:  ${s.money_earned:,}", True, TEXT_PRIMARY),
-            (_CL, y),
-        )
+            # Per-completed-challenge breakdown
+            for ch in self._completed_challenges:
+                desc = getattr(ch, 'description', getattr(ch, 'id', '?'))
+                xp = getattr(ch, 'reward_xp', 0)
+                money = getattr(ch, 'reward_money', 0)
+                item_id = getattr(ch, 'reward_item_id', None)
+                reward_parts = []
+                if xp:
+                    reward_parts.append(f"+{xp} XP")
+                if money:
+                    reward_parts.append(f"+{money} cr")
+                if item_id:
+                    reward_parts.append(f"+{item_id}")
+                reward_str = ", ".join(reward_parts) if reward_parts else ""
+                line = f"  \u2713 {desc}"
+                if reward_str:
+                    line += f"  [{reward_str}]"
+                ch_surf = small_font.render(line, True, (57, 255, 20))
+                surface.blit(ch_surf, (100, y))
+                y += 22
 
-        # ── Right column ──────────────────────────────────────────────────
-        y = _STATS_Y
-        surface.blit(
-            font.render(f"Kills:  {s.kills}", True, TEXT_PRIMARY),
-            (_COL2, y),
-        )
-        y += _STAT_ROW_H
-        if s.challenges_total > 0:
-            surface.blit(
-                font.render(
-                    f"Challenges:  {s.challenges_completed}/{s.challenges_total}",
-                    True, TEXT_PRIMARY,
-                ),
-                (_COL2, y),
-            )
-
-    def _draw_xp_bar(self, surface: pygame.Surface) -> None:
-        """Render a horizontal XP progress bar showing before → after within level."""
-        bar_x = SCREEN_W // 2 - _XP_BAR_W // 2
-        bar_y = _XP_BAR_Y
-
-        # If the player levelled up, fill to 100%; otherwise show new position
-        if self.show_level_up:
-            fill_ratio = 1.0
-        else:
-            xp_after = self._xp_system.xp if self._xp_system else 0
-            xp_cap = max(self._xp_to_next_before, 1)
-            fill_ratio = min(1.0, xp_after / xp_cap)
-
-        # Background track
-        pygame.draw.rect(
-            surface, BORDER_DIM,
-            (bar_x, bar_y, _XP_BAR_W, _XP_BAR_H),
-            border_radius=4,
-        )
-        # Filled portion
-        fill_w = max(0, int(_XP_BAR_W * fill_ratio))
-        if fill_w > 0:
-            pygame.draw.rect(
-                surface, ACCENT_CYAN,
-                (bar_x, bar_y, fill_w, _XP_BAR_H),
-                border_radius=4,
-            )
-
-    def _ensure_button_rects(self) -> None:
-        """Compute the three button Rects once and cache them."""
-        if self._btn_rects:
-            return
-        total_w = _NUM_BUTTONS * _BTN_W + (_NUM_BUTTONS - 1) * _BTN_GAP
-        start_x = (SCREEN_W - total_w) // 2
-        self._btn_rects = [
-            pygame.Rect(start_x + i * (_BTN_W + _BTN_GAP), _BTN_Y, _BTN_W, _BTN_H)
-            for i in range(_NUM_BUTTONS)
-        ]
-
-    def _draw_buttons(self, surface: pygame.Surface) -> None:
-        """Render the three navigation buttons with focus highlighting."""
-        labels = ["QUEUE AGAIN", "HOME BASE", "MAIN MENU"]
-        font = self._fonts.get("btn", self._fonts.get("md", _safe_font(24)))
-
-        for i, (rect, label) in enumerate(zip(self._btn_rects, labels)):
-            focused = i == self.focused_button_index
-            bg = _BTN_BG_FOCUSED if focused else _BTN_BG_NORMAL
-            border = ACCENT_CYAN if focused else BORDER_DIM
-            border_w = 2 if focused else 1
-            txt_color = ACCENT_CYAN if focused else TEXT_PRIMARY
-
-            pygame.draw.rect(surface, bg, rect, border_radius=4)
-            pygame.draw.rect(surface, border, rect, width=border_w, border_radius=4)
-
-            txt_surf = font.render(label, True, txt_color)
-            surface.blit(txt_surf, txt_surf.get_rect(center=rect.center))
-
-    def _ensure_fonts(self) -> None:
-        """Lazily create pygame fonts on first render call."""
-        if self._fonts:
-            return
-        self._fonts = {
-            "lg":  _safe_font(52),   # status header
-            "md":  _safe_font(26),   # body text / item rows
-            "sm":  _safe_font(22),   # sub-header
-            "xs":  _safe_font(18),   # section labels / hints
-            "btn": _safe_font(24),   # button labels
-        }
-
-    # ------------------------------------------------------------------
-    # Navigation
-    # ------------------------------------------------------------------
+    # Private helpers
 
     def _activate_button(self, index: int) -> None:
         """Route the activated button to the correct scene transition."""

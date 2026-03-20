@@ -7,7 +7,8 @@
       "target": 5,
       "zone_filter": null,
       "reward_xp": 150,
-      "reward_money": 200
+      "reward_money": 200,
+      "reward_item_id": null
     },
     {
       "id": "kill_spree_10",
@@ -16,7 +17,8 @@
       "target": 10,
       "zone_filter": null,
       "reward_xp": 300,
-      "reward_money": 400
+      "reward_money": 400,
+      "reward_item_id": null
     },
     {
       "id": "loot_collector_5",
@@ -25,7 +27,8 @@
       "target": 5,
       "zone_filter": null,
       "reward_xp": 100,
-      "reward_money": 150
+      "reward_money": 150,
+      "reward_item_id": null
     },
     {
       "id": "loot_collector_10",
@@ -34,7 +37,8 @@
       "target": 10,
       "zone_filter": null,
       "reward_xp": 200,
-      "reward_money": 300
+      "reward_money": 300,
+      "reward_item_id": null
     },
     {
       "id": "zone_alpha_hunter",
@@ -43,7 +47,8 @@
       "target": 3,
       "zone_filter": "zone_alpha",
       "reward_xp": 120,
-      "reward_money": 175
+      "reward_money": 175,
+      "reward_item_id": null
     },
     {
       "id": "zone_beta_hunter",
@@ -52,7 +57,8 @@
       "target": 3,
       "zone_filter": "zone_beta",
       "reward_xp": 120,
-      "reward_money": 175
+      "reward_money": 175,
+      "reward_item_id": null
     },
     {
       "id": "zone_gamma_hunter",
@@ -61,7 +67,8 @@
       "target": 5,
       "zone_filter": "zone_gamma",
       "reward_xp": 200,
-      "reward_money": 300
+      "reward_money": 300,
+      "reward_item_id": null
     },
     {
       "id": "explorer",
@@ -70,7 +77,8 @@
       "target": 3,
       "zone_filter": null,
       "reward_xp": 100,
-      "reward_money": 150
+      "reward_money": 150,
+      "reward_item_id": null
     },
     {
       "id": "deep_explorer",
@@ -79,7 +87,8 @@
       "target": 4,
       "zone_filter": null,
       "reward_xp": 200,
-      "reward_money": 350
+      "reward_money": 350,
+      "reward_item_id": null
     },
     {
       "id": "big_haul",
@@ -88,7 +97,8 @@
       "target": 8,
       "zone_filter": null,
       "reward_xp": 250,
-      "reward_money": 500
+      "reward_money": 500,
+      "reward_item_id": null
     },
     {
       "id": "quick_draw",
@@ -97,7 +107,8 @@
       "target": 180,
       "zone_filter": null,
       "reward_xp": 150,
-      "reward_money": 250
+      "reward_money": 250,
+      "reward_item_id": null
     },
     {
       "id": "survivalist",
@@ -106,7 +117,128 @@
       "target": 1,
       "zone_filter": null,
       "reward_xp": 200,
-      "reward_money": 400
+      "reward_money": 400,
+      "reward_item_id": null
+    },
+    {
+      "id": "cargo_bay_killer_3",
+      "description": "Eliminate 3 enemies in the Cargo Bay",
+      "criteria_type": "enemy_killed",
+      "target": 3,
+      "zone_filter": "cargo_bay",
+      "reward_xp": 120,
+      "reward_money": 200,
+      "reward_item_id": null
+    },
+    {
+      "id": "cargo_bay_killer_6",
+      "description": "Eliminate 6 enemies in the Cargo Bay",
+      "criteria_type": "enemy_killed",
+      "target": 6,
+      "zone_filter": "cargo_bay",
+      "reward_xp": 240,
+      "reward_money": 350,
+      "reward_item_id": null
+    },
+    {
+      "id": "cargo_bay_looter_3",
+      "description": "Collect 3 items in the Cargo Bay",
+      "criteria_type": "item_picked_up",
+      "target": 3,
+      "zone_filter": "cargo_bay",
+      "reward_xp": 100,
+      "reward_money": 150,
+      "reward_item_id": "medkit_basic"
+    },
+    {
+      "id": "cargo_bay_visitor",
+      "description": "Reach the Cargo Bay",
+      "criteria_type": "reach_location",
+      "target": 1,
+      "zone_filter": "cargo_bay",
+      "reward_xp": 50,
+      "reward_money": 100,
+      "reward_item_id": null
+    },
+    {
+      "id": "reactor_core_killer_5",
+      "description": "Eliminate 5 enemies in the Reactor Core",
+      "criteria_type": "enemy_killed",
+      "target": 5,
+      "zone_filter": "reactor_core",
+      "reward_xp": 200,
+      "reward_money": 300,
+      "reward_item_id": null
+    },
+    {
+      "id": "reactor_core_killer_3",
+      "description": "Eliminate 3 enemies in the Reactor Core",
+      "criteria_type": "enemy_killed",
+      "target": 3,
+      "zone_filter": "reactor_core",
+      "reward_xp": 120,
+      "reward_money": 175,
+      "reward_item_id": null
+    },
+    {
+      "id": "reactor_core_looter_3",
+      "description": "Collect 3 items in the Reactor Core",
+      "criteria_type": "item_picked_up",
+      "target": 3,
+      "zone_filter": "reactor_core",
+      "reward_xp": 100,
+      "reward_money": 175,
+      "reward_item_id": "ammo_rifle"
+    },
+    {
+      "id": "reactor_core_visitor",
+      "description": "Reach the Reactor Core",
+      "criteria_type": "reach_location",
+      "target": 1,
+      "zone_filter": "reactor_core",
+      "reward_xp": 75,
+      "reward_money": 125,
+      "reward_item_id": null
+    },
+    {
+      "id": "command_deck_killer_5",
+      "description": "Eliminate 5 enemies on the Command Deck",
+      "criteria_type": "enemy_killed",
+      "target": 5,
+      "zone_filter": "command_deck",
+      "reward_xp": 200,
+      "reward_money": 350,
+      "reward_item_id": null
+    },
+    {
+      "id": "command_deck_killer_3",
+      "description": "Eliminate 3 enemies on the Command Deck",
+      "criteria_type": "enemy_killed",
+      "target": 3,
+      "zone_filter": "command_deck",
+      "reward_xp": 120,
+      "reward_money": 200,
+      "reward_item_id": null
+    },
+    {
+      "id": "command_deck_looter_4",
+      "description": "Collect 4 items on the Command Deck",
+      "criteria_type": "item_picked_up",
+      "target": 4,
+      "zone_filter": "command_deck",
+      "reward_xp": 150,
+      "reward_money": 200,
+      "reward_item_id": "scope_red_dot"
+    },
+    {
+      "id": "command_deck_visitor",
+      "description": "Reach the Command Deck",
+      "criteria_type": "reach_location",
+      "target": 1,
+      "zone_filter": "command_deck",
+      "reward_xp": 75,
+      "reward_money": 150,
+      "reward_item_id": null
     }
   ]
 }

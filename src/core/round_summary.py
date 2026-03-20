@@ -1,11 +1,5 @@
 """RoundSummary dataclass — carries all post-round statistics."""
-from __future__ import annotations
-
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from src.inventory.item import Item
 
 _VALID_STATUSES = frozenset({"success", "timeout", "eliminated"})
 
@@ -21,6 +15,10 @@ class RoundSummary:
     challenges_total: int
     level_before: int
     level_after: int = 0
+    # Challenge bonus totals applied at PostRound
+    challenge_bonus_xp: int = 0
+    challenge_bonus_money: int = 0
+    challenge_bonus_items: list = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.extraction_status not in _VALID_STATUSES:
