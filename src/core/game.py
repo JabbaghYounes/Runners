@@ -32,6 +32,7 @@ from src.core.event_bus import EventBus
 from src.core.scene_manager import SceneManager
 from src.core.settings import Settings
 from src.scenes.main_menu import MainMenu
+from src.systems.audio_system import AudioSystem
 
 
 class GameApp:
@@ -54,6 +55,10 @@ class GameApp:
         self.assets: AssetManager = AssetManager()
         self.assets.set_audio_available(self._audio_ok)
 
+        # Shared AudioSystem — created once here so MainMenu, SettingsScreen,
+        # and GameScene all share the same mixer state and volume settings.
+        self.audio: AudioSystem = AudioSystem(self.bus, self.assets, self.settings)
+
         # ── Scene stack ───────────────────────────────────────────────────────
         self.scenes: SceneManager = SceneManager()
 
@@ -61,7 +66,9 @@ class GameApp:
         self.bus.subscribe("scene_request", self._on_scene_request)
 
         # Boot into the main menu
-        self.scenes.push(MainMenu(self.scenes, self.settings, self.assets, self.bus))
+        self.scenes.push(
+            MainMenu(self.scenes, self.settings, self.assets, self.bus, audio=self.audio)
+        )
 
         self._running: bool = False
 

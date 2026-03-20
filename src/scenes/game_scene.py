@@ -154,12 +154,13 @@ class GameScene(BaseScene):
         except Exception:
             self._challenge = None
 
-        # Audio system
-        try:
-            from src.systems.audio_system import AudioSystem
-            self._audio_sys = AudioSystem(self._event_bus, self._assets)
-        except Exception:
-            self._audio_sys = None
+        # Audio system — skip creation if an instance was already injected (e.g. tests)
+        if self._audio is None:
+            try:
+                from src.systems.audio_system import AudioSystem
+                self._audio = AudioSystem(self._event_bus, self._assets, self._settings)
+            except Exception:
+                pass
 
         # Extraction system
         try:
@@ -231,9 +232,6 @@ class GameScene(BaseScene):
         self._loot_sys = None
         self._buff = None
         self._challenge = None
-        if not hasattr(self, '_audio_sys'):
-            self._audio_sys = None
-
         # Apply home base bonuses in stub mode too
         if self._home_base is not None:
             self._apply_home_base_bonuses(self.player, self._home_base)
@@ -343,7 +341,8 @@ class GameScene(BaseScene):
         pass
 
     def on_exit(self) -> None:
-        pass
+        if self._audio is not None:
+            self._audio.stop_music()
 
     def handle_events(self, events: List[pygame.event.Event]) -> None:
         for event in events:

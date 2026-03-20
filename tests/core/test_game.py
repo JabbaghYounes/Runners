@@ -171,3 +171,47 @@ class TestGameAppLoop:
         app.scenes.active._quit = True  # type: ignore[union-attr]
         app.run()
         assert app.scenes.is_empty()
+
+
+# ── Audio wiring ──────────────────────────────────────────────────────────────
+
+class TestGameAppAudioWiring:
+    """GameApp must create a shared AudioSystem and pass it to the initial scene."""
+
+    def test_audio_attribute_is_audiosystem_instance(self):
+        from src.systems.audio_system import AudioSystem
+        app = _fresh_app()
+        assert isinstance(app.audio, AudioSystem)
+        app._shutdown()
+
+    def test_audio_ok_flag_is_bool(self):
+        app = _fresh_app()
+        assert isinstance(app._audio_ok, bool)
+        app._shutdown()
+
+    def test_audiosystem_created_even_when_mixer_unavailable(self):
+        """_audio_ok=False (headless CI) must still produce an AudioSystem object."""
+        app = _fresh_app()
+        # In CI, _audio_ok may be False; audio must still be present.
+        assert app.audio is not None
+        app._shutdown()
+
+    def test_audio_mixer_ok_agrees_with_audio_ok_flag(self):
+        """AudioSystem._mixer_ok must match GameApp._audio_ok."""
+        app = _fresh_app()
+        assert app.audio._mixer_ok == app._audio_ok
+        app._shutdown()
+
+    def test_main_menu_holds_audio_attribute(self):
+        from src.scenes.main_menu import MainMenu
+        app = _fresh_app()
+        menu = app.scenes.active
+        assert isinstance(menu, MainMenu)
+        assert hasattr(menu, "_audio")
+        app._shutdown()
+
+    def test_main_menu_audio_is_same_instance_as_app_audio(self):
+        """Menu must hold a reference to the shared AudioSystem, not a copy."""
+        app = _fresh_app()
+        assert app.scenes.active._audio is app.audio
+        app._shutdown()

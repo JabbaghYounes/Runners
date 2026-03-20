@@ -281,3 +281,67 @@ class TestSettingsScreenFrame:
         ss._on_back()                   # Opens confirm
         ss.handle_events([_keydown(pygame.K_ESCAPE)])
         mock_sm.pop.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Audio live-preview — slider callbacks must call audio.apply_volumes()
+# ---------------------------------------------------------------------------
+
+class TestSettingsScreenAudioLivePreview:
+    """When a non-None AudioSystem is passed, every volume slider change must
+    call apply_volumes() so the running mixer updates in real time."""
+
+    @pytest.fixture
+    def audio(self):
+        return MagicMock()
+
+    @pytest.fixture
+    def ss_with_audio(self, mock_sm, settings, assets, audio):
+        return SettingsScreen(mock_sm, settings, assets, audio=audio), audio
+
+    def test_on_master_calls_apply_volumes(self, ss_with_audio):
+        ss, audio = ss_with_audio
+        audio.apply_volumes.reset_mock()
+        ss._on_master(0.5)
+        audio.apply_volumes.assert_called()
+
+    def test_on_music_calls_apply_volumes(self, ss_with_audio):
+        ss, audio = ss_with_audio
+        audio.apply_volumes.reset_mock()
+        ss._on_music(0.4)
+        audio.apply_volumes.assert_called()
+
+    def test_on_sfx_calls_apply_volumes(self, ss_with_audio):
+        ss, audio = ss_with_audio
+        audio.apply_volumes.reset_mock()
+        ss._on_sfx(0.9)
+        audio.apply_volumes.assert_called()
+
+    def test_apply_volumes_called_once_per_slider_change(self, ss_with_audio):
+        ss, audio = ss_with_audio
+        audio.apply_volumes.reset_mock()
+        ss._on_master(0.3)
+        assert audio.apply_volumes.call_count == 1
+
+    def test_settings_mutated_before_apply_volumes(self, ss_with_audio):
+        """Settings must be updated before apply_volumes fires so the audio
+        system reads the new value from the settings object."""
+        ss, audio = ss_with_audio
+        captured = []
+        audio.apply_volumes.side_effect = (
+            lambda: captured.append(ss._settings.master_volume)
+        )
+        ss._on_master(0.25)
+        assert captured == [pytest.approx(0.25)]
+
+    def test_no_error_when_audio_is_none_on_master_change(self, mock_sm, settings, assets):
+        ss = SettingsScreen(mock_sm, settings, assets, audio=None)
+        ss._on_master(0.5)   # must not raise
+
+    def test_no_error_when_audio_is_none_on_music_change(self, mock_sm, settings, assets):
+        ss = SettingsScreen(mock_sm, settings, assets, audio=None)
+        ss._on_music(0.5)
+
+    def test_no_error_when_audio_is_none_on_sfx_change(self, mock_sm, settings, assets):
+        ss = SettingsScreen(mock_sm, settings, assets, audio=None)
+        ss._on_sfx(0.5)
