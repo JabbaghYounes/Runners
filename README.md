@@ -8,7 +8,7 @@
 
 ---
 
-[![Built with Ricky](https://img.shields.io/badge/Built%20with-Ricky-ff6b35?style=for-the-badge&logo=dependabot&logoColor=white)](https://github.com/JabbaghYounes/Ricky)
+[![Built with Claude Hive](https://img.shields.io/badge/Built%20with-Claude%20Hive-ff6b35?style=for-the-badge&logo=dependabot&logoColor=white)](https://github.com/JabbaghYounes/claude-hive)
 
 ## Features
 
@@ -80,7 +80,7 @@ Runners/
 │   ├── systems/             # AI, audio, combat, physics, shooting, challenges
 │   └── ui/                  # HUD, mini-map, widgets
 ├── tests/                   # Pytest test suite (2369 tests)
-└── ricky/                   # AI swarm toolkit (PRD → features → PRs)
+└── claude-hive/             # AI swarm toolkit (PRD → features → PRs)
 ```
 
 ## Running Tests

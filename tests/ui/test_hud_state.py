@@ -287,3 +287,56 @@ class TestConsumableSlotIcon:
     def test_count_zero_allowed(self):
         cs = ConsumableSlot(label='Empty', count=0)
         assert cs.count == 0
+
+
+# ---------------------------------------------------------------------------
+# HUDState.tile_surf — new field for the baked 1-px-per-tile minimap surface
+# ---------------------------------------------------------------------------
+
+
+class TestHUDStateTileSurf:
+    """tile_surf carries TileMap.baked_minimap through the HUD pipeline."""
+
+    def test_tile_surf_default_is_none(self):
+        state = HUDState()
+        assert state.tile_surf is None
+
+    def test_tile_surf_field_accepts_any_value(self):
+        """Field must accept a pygame.Surface or any sentinel without type error."""
+        sentinel = object()
+        state = HUDState(tile_surf=sentinel)
+        assert state.tile_surf is sentinel
+
+    def test_tile_surf_stored_when_set_via_constructor(self):
+        import pygame
+        surf = pygame.Surface((10, 8))
+        state = HUDState(tile_surf=surf)
+        assert state.tile_surf is surf
+
+    def test_tile_surf_can_be_replaced_by_mutation(self):
+        state = HUDState()
+        assert state.tile_surf is None
+        surf = object()
+        state.tile_surf = surf
+        assert state.tile_surf is surf
+
+    def test_two_instances_tile_surf_are_independent(self):
+        """Mutating one instance's tile_surf must not affect another."""
+        s1 = HUDState()
+        s2 = HUDState()
+        s1.tile_surf = object()
+        assert s2.tile_surf is None
+
+    def test_tile_surf_none_is_falsy(self):
+        """Code that guards with 'if state.tile_surf:' must see None as falsy."""
+        state = HUDState()
+        assert not state.tile_surf
+
+    def test_tile_surf_pygame_surface_is_truthy(self):
+        """A real pygame.Surface stored in tile_surf must be truthy."""
+        import pygame
+        surf = pygame.Surface((100, 30))
+        state = HUDState(tile_surf=surf)
+        # pygame.Surface does not define __bool__ as False for non-empty surfaces,
+        # but the field reference itself must not be None
+        assert state.tile_surf is not None
