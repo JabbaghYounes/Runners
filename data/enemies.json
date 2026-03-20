@@ -67,27 +67,30 @@
   "loot_tables": {
     "grunt_drops": {
       "rolls": 1,
+      "rarity_weights": {"common": 60, "uncommon": 30, "rare": 10, "epic": 0},
       "entries": [
-        {"item_id": "ammo_pistol",   "weight": 60},
-        {"item_id": "medkit_small",  "weight": 30},
-        {"item_id": "weapon_pistol", "weight": 10}
+        {"item_id": "ammo_pistol",   "weight": 60, "rarity": "common"},
+        {"item_id": "medkit_small",  "weight": 30, "rarity": "uncommon"},
+        {"item_id": "weapon_pistol", "weight": 10, "rarity": "rare"}
       ]
     },
     "heavy_drops": {
       "rolls": 2,
+      "rarity_weights": {"common": 50, "uncommon": 35, "rare": 10, "epic": 5},
       "entries": [
-        {"item_id": "ammo_rifle",    "weight": 50},
-        {"item_id": "medkit_large",  "weight": 25},
-        {"item_id": "armor_light",   "weight": 20},
-        {"item_id": "weapon_rifle",  "weight": 5}
+        {"item_id": "ammo_rifle",    "weight": 50, "rarity": "common"},
+        {"item_id": "medkit_large",  "weight": 25, "rarity": "uncommon"},
+        {"item_id": "armor_light",   "weight": 20, "rarity": "uncommon"},
+        {"item_id": "weapon_rifle",  "weight": 5,  "rarity": "rare"}
       ]
     },
     "sniper_drops": {
       "rolls": 1,
+      "rarity_weights": {"common": 55, "uncommon": 25, "rare": 20, "epic": 0},
       "entries": [
-        {"item_id": "ammo_sniper",   "weight": 55},
-        {"item_id": "medkit_small",  "weight": 25},
-        {"item_id": "weapon_sniper", "weight": 20}
+        {"item_id": "ammo_sniper",   "weight": 55, "rarity": "common"},
+        {"item_id": "medkit_small",  "weight": 25, "rarity": "uncommon"},
+        {"item_id": "weapon_sniper", "weight": 20, "rarity": "rare"}
       ]
     }
   }

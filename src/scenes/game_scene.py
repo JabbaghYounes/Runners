@@ -61,6 +61,11 @@ class GameScene(BaseScene):
         # Loot value bonus from home base
         self.loot_value_bonus: float = 0.0
 
+        # Loot system — initialised to None; set by _init_full.
+        # _loot_items_fallback is used by the loot_items property in stub mode.
+        self._loot_sys: Optional[Any] = None
+        self._loot_items_fallback: list = []
+
         # Try to load the full map-based setup when a scene manager is provided.
         self._full_init = False
         _want_full = self._sm is not None
@@ -121,19 +126,6 @@ class GameScene(BaseScene):
             self.tile_map.zones, self._enemy_db
         )
 
-        # Loot
-        self.loot_items: list = []
-        try:
-            from src.entities.loot_item import LootItem
-            for lx, ly in self.tile_map.loot_spawns:
-                item_id = random.choice(self._item_db.item_ids) if self._item_db.item_ids else None
-                if item_id:
-                    item = self._item_db.create(item_id)
-                    if item:
-                        self.loot_items.append(LootItem(lx, ly, item))
-        except Exception:
-            pass
-
         # Projectiles
         self.projectiles: list = []
 
@@ -145,6 +137,13 @@ class GameScene(BaseScene):
             self._loot_sys = LootSystem(self._event_bus, self._item_db)
         except Exception:
             self._loot_sys = None
+
+        # Spawn static map loot through LootSystem so it owns all items from the start
+        try:
+            if self._loot_sys is not None:
+                self._loot_sys.spawn_round_loot(self.tile_map.loot_spawns)
+        except Exception:
+            pass
         self._buff = BuffSystem()
 
         # Challenge system
@@ -241,6 +240,25 @@ class GameScene(BaseScene):
         # Apply skill tree bonuses in stub mode too
         if self._skill_tree is not None:
             self._apply_skill_tree_bonuses(self.player, self._skill_tree)
+
+    # ------------------------------------------------------------------
+    # loot_items property — unified accessor for both full and stub mode
+    # ------------------------------------------------------------------
+
+    @property
+    def loot_items(self) -> list:
+        """Return live loot items: from LootSystem in full mode, fallback list in stub."""
+        if self._loot_sys is not None:
+            return self._loot_sys.loot_items
+        return self._loot_items_fallback
+
+    @loot_items.setter
+    def loot_items(self, value: list) -> None:
+        """Allow direct assignment in stub mode (e.g., ``self.loot_items = []``)."""
+        if self._loot_sys is not None:
+            # In full mode loot is owned by LootSystem — ignore external assignment
+            return
+        self._loot_items_fallback = value
 
     # ------------------------------------------------------------------
     # _apply_home_base_bonuses — tested as an unbound method call
@@ -343,7 +361,8 @@ class GameScene(BaseScene):
         pass
 
     def on_exit(self) -> None:
-        pass
+        if self._loot_sys is not None:
+            self._loot_sys.despawn_all()
 
     def handle_events(self, events: List[pygame.event.Event]) -> None:
         for event in events:
@@ -410,9 +429,7 @@ class GameScene(BaseScene):
         # Loot
         if self._loot_sys:
             try:
-                new_drops = self._loot_sys.update(self._e_held, self.loot_items, [self.player])
-                if new_drops:
-                    self.loot_items.extend(new_drops)
+                self._loot_sys.update(self.player, e_key_pressed=self._e_held)
             except Exception:
                 pass
         for li in self.loot_items:
