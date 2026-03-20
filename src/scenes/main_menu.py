@@ -76,6 +76,8 @@ class MainMenu(BaseScene):
             self._assets = third
             self._bus = fourth if isinstance(fourth, EventBus) else EventBus()
 
+        self._audio = kwargs.get('audio')
+
         self._selected = 0
         self._quit = False
         self._buttons = []  # Placeholder for test compat (no actual Button widgets here)
@@ -180,7 +182,7 @@ class MainMenu(BaseScene):
         """Push the settings screen on top of the menu."""
         from src.scenes.settings_screen import SettingsScreen
         if self._sm is not None:
-            self._sm.push(SettingsScreen(self._sm, self._settings, self._assets))
+            self._sm.push(SettingsScreen(self._sm, self._settings, self._assets, audio=self._audio))
         else:
             self._bus.emit("scene_request", scene="settings")
 

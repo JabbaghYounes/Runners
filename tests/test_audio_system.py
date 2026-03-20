@@ -471,3 +471,163 @@ class TestStopMusic:
             bus.emit("zone_entered", zone=zone)
 
             pm.mixer.music.load.assert_called_once_with(track)
+
+
+# ---------------------------------------------------------------------------
+# AssetManager path contract — load_sound must receive relative paths
+# ---------------------------------------------------------------------------
+
+class TestLoadSoundPaths:
+    def test_sfx_loaded_with_relative_paths(self):
+        """_load_sfx must pass AssetManager-relative paths (not absolute OS paths)."""
+        from unittest.mock import patch
+
+        recorded_paths: list[str] = []
+
+        pm = _make_pygame_mock()
+        bus = EventBus()
+        am = AssetManager()
+        am.load_sound = lambda path: recorded_paths.append(path) or MagicMock()
+
+        with patch.dict(sys.modules, {"pygame": pm}):
+            AudioSystem(bus, am, Settings())
+
+        assert recorded_paths, "load_sound was never called"
+        for path in recorded_paths:
+            assert not path.startswith('/'), (
+                f"load_sound received absolute path; expected relative: {path!r}"
+            )
+            assert path.startswith('sfx/'), (
+                f"Expected 'sfx/' prefix for SFX asset, got: {path!r}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# set_volume() — legacy three-argument volume setter
+# ---------------------------------------------------------------------------
+
+class TestSetVolumeMethod:
+    def test_set_volume_updates_music_channel(self):
+        """set_volume(master, music, sfx) must call pygame.mixer.music.set_volume(master*music)."""
+        pm = _make_pygame_mock()
+        with _audio_ctx(pm) as (audio, _):
+            pm.mixer.music.set_volume.reset_mock()
+            audio.set_volume(0.5, 0.8, 1.0)
+        pm.mixer.music.set_volume.assert_called_once_with(pytest.approx(0.5 * 0.8))
+
+    def test_set_volume_noop_when_mixer_unavailable(self):
+        pm = _make_pygame_mock(mixer_ok=False, init_raises=True)
+        with _audio_ctx(pm) as (audio, _):
+            pm.mixer.music.set_volume.reset_mock()
+            audio.set_volume(0.5, 0.8, 1.0)
+        pm.mixer.music.set_volume.assert_not_called()
+
+    def test_set_volume_zero_master_silences_music(self):
+        pm = _make_pygame_mock()
+        with _audio_ctx(pm) as (audio, _):
+            pm.mixer.music.set_volume.reset_mock()
+            audio.set_volume(0.0, 1.0, 1.0)
+        pm.mixer.music.set_volume.assert_called_once_with(pytest.approx(0.0))
+
+    def test_set_volume_full_master_and_music(self):
+        pm = _make_pygame_mock()
+        with _audio_ctx(pm) as (audio, _):
+            pm.mixer.music.set_volume.reset_mock()
+            audio.set_volume(1.0, 1.0, 1.0)
+        pm.mixer.music.set_volume.assert_called_once_with(pytest.approx(1.0))
+
+
+# ---------------------------------------------------------------------------
+# Initialisation without settings (settings=None)
+# ---------------------------------------------------------------------------
+
+class TestInitialisationWithoutSettings:
+    """AudioSystem(bus, assets, None) must behave correctly: no volumes applied
+    during __init__, but all other functionality works normally."""
+
+    def _make_audio_no_settings(self, pm):
+        bus = EventBus()
+        am = AssetManager()
+        am.load_sound = lambda path: MagicMock()
+        with patch.dict(sys.modules, {"pygame": pm}):
+            audio = AudioSystem(bus, am, None)
+        return audio, bus
+
+    def test_settings_attribute_is_none(self):
+        pm = _make_pygame_mock()
+        audio, _ = self._make_audio_no_settings(pm)
+        assert audio._settings is None
+
+    def test_apply_volumes_is_noop_when_settings_is_none(self):
+        pm = _make_pygame_mock()
+        audio, _ = self._make_audio_no_settings(pm)
+        pm.mixer.music.set_volume.reset_mock()
+        with patch.dict(sys.modules, {"pygame": pm}):
+            audio.apply_volumes()
+        pm.mixer.music.set_volume.assert_not_called()
+
+    def test_sfx_sounds_all_loaded_without_settings(self):
+        """All SFX keys must be present even when no Settings object is given."""
+        pm = _make_pygame_mock()
+        audio, _ = self._make_audio_no_settings(pm)
+        expected_keys = {
+            "shoot", "reload", "footstep", "robot_attack",
+            "loot_pickup", "extraction_success", "extraction_fail",
+        }
+        assert set(audio._sfx_sounds.keys()) == expected_keys
+
+    def test_sfx_events_fire_without_settings(self):
+        """SFX must play from bus events even when settings=None."""
+        mock_sound = MagicMock()
+        pm = _make_pygame_mock()
+        bus = EventBus()
+        am = AssetManager()
+        am.load_sound = lambda path: mock_sound
+        with patch.dict(sys.modules, {"pygame": pm}):
+            AudioSystem(bus, am, None)
+            bus.emit("player_shot")
+        mock_sound.play.assert_called()
+
+    def test_mixer_ok_still_true_without_settings(self):
+        pm = _make_pygame_mock(mixer_ok=True)
+        audio, _ = self._make_audio_no_settings(pm)
+        assert audio._mixer_ok is True
+
+
+# ---------------------------------------------------------------------------
+# EventBus subscriptions — AudioSystem must register all expected handlers
+# ---------------------------------------------------------------------------
+
+class TestEventBusSubscriptions:
+    """After construction, every game event AudioSystem handles must have
+    at least one listener registered on the EventBus."""
+
+    def _bus_after_audio_init(self):
+        pm = _make_pygame_mock()
+        bus = EventBus()
+        am = AssetManager()
+        am.load_sound = lambda path: MagicMock()
+        with patch.dict(sys.modules, {"pygame": pm}):
+            AudioSystem(bus, am, Settings())
+        return bus
+
+    def test_zone_entered_has_subscriber(self):
+        assert self._bus_after_audio_init().listener_count("zone_entered") >= 1
+
+    def test_player_shot_has_subscriber(self):
+        assert self._bus_after_audio_init().listener_count("player_shot") >= 1
+
+    def test_player_reloaded_has_subscriber(self):
+        assert self._bus_after_audio_init().listener_count("player_reloaded") >= 1
+
+    def test_enemy_attack_has_subscriber(self):
+        assert self._bus_after_audio_init().listener_count("enemy_attack") >= 1
+
+    def test_item_picked_up_has_subscriber(self):
+        assert self._bus_after_audio_init().listener_count("item_picked_up") >= 1
+
+    def test_extraction_success_has_subscriber(self):
+        assert self._bus_after_audio_init().listener_count("extraction_success") >= 1
+
+    def test_extraction_failed_has_subscriber(self):
+        assert self._bus_after_audio_init().listener_count("extraction_failed") >= 1

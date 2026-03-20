@@ -1,7 +1,6 @@
 """AudioSystem -- manages background music and sound effects."""
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -10,17 +9,15 @@ if TYPE_CHECKING:
     from src.core.settings import Settings
     from src.map.zone import Zone
 
-_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_SFX_DIR = os.path.join(_ROOT, "assets", "audio", "sfx")
-
+# Paths are relative to assets/audio/ (the root AssetManager.load_sound expects).
 _SFX_MAP: dict[str, str] = {
-    "shoot":              "shoot.wav",
-    "reload":             "reload.wav",
-    "footstep":           "footstep.wav",
-    "robot_attack":       "robot_attack.wav",
-    "loot_pickup":        "loot_pickup.wav",
-    "extraction_success": "extraction_success.wav",
-    "extraction_fail":    "extraction_fail.wav",
+    "shoot":              "sfx/shoot.wav",
+    "reload":             "sfx/reload.wav",
+    "footstep":           "sfx/footstep.wav",
+    "robot_attack":       "sfx/robot_attack.wav",
+    "loot_pickup":        "sfx/loot_pickup.wav",
+    "extraction_success": "sfx/extraction_success.wav",
+    "extraction_fail":    "sfx/extraction_fail.wav",
 }
 
 _FOOTSTEP_INTERVAL: float = 0.35
@@ -60,12 +57,8 @@ class AudioSystem:
             return False
 
     def _load_sfx(self) -> None:
-        for name, filename in _SFX_MAP.items():
-            path = os.path.join(_SFX_DIR, filename)
-            try:
-                self._sfx_sounds[name] = self._asset_manager.load_sound(path)
-            except Exception:
-                self._sfx_sounds[name] = None
+        for name, rel_path in _SFX_MAP.items():
+            self._sfx_sounds[name] = self._asset_manager.load_sound(rel_path)
 
     def _subscribe_events(self) -> None:
         eb = self._event_bus
