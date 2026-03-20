@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import math
 
-from src.core.constants import ROUND_DURATION_SECS
+from src.core.constants import ROUND_DURATION_SECS, TIMER_WARN_SECS
 from src.core.event_bus import EventBus
 
 
@@ -39,6 +39,7 @@ class RoundTimer:
         self._last_published: int = math.ceil(duration)  # whole-second tracker
         self._running: bool = False
         self._expired: bool = False
+        self._warning_fired: bool = False
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -54,6 +55,7 @@ class RoundTimer:
         self._last_published = math.ceil(self._duration)
         self._running = False
         self._expired = False
+        self._warning_fired = False
 
     # ------------------------------------------------------------------
     # Per-frame update
@@ -78,6 +80,12 @@ class RoundTimer:
             for tick in range(self._last_published - 1, current_whole - 1, -1):
                 self._bus.publish("timer_tick", seconds_remaining=tick)
             self._last_published = current_whole
+
+        # Publish round_warning exactly once when the timer drops to or below
+        # the warning threshold (default 5 minutes / 300 s).
+        if not self._warning_fired and self.seconds_remaining <= TIMER_WARN_SECS:
+            self._warning_fired = True
+            self._bus.publish("round_warning", seconds_remaining=int(self.seconds_remaining))
 
         # Publish round_end exactly once when the timer reaches zero.
         if self.seconds_remaining == 0.0 and not self._expired:

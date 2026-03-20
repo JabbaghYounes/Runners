@@ -166,3 +166,141 @@ class TestSceneManagerRouting:
         # a is paused — it must NOT receive updates
         assert a._dt_received == []
         assert b._dt_received == [0.016]
+
+    def test_handle_events_empty_stack_does_not_raise(self):
+        """Calling handle_events when no scene is on the stack must be safe."""
+        self.sm.handle_events([])  # no active scene; must not raise
+
+    def test_update_empty_stack_does_not_raise(self):
+        """Calling update when no scene is on the stack must be safe."""
+        self.sm.update(0.016)
+
+    def test_render_empty_stack_does_not_raise(self):
+        """Calling render when no scene is on the stack must be safe."""
+        surf = pygame.Surface((1, 1))
+        self.sm.render(surf)
+
+
+# ── replace_all ───────────────────────────────────────────────────────────────
+
+
+class TestSceneManagerReplaceAll:
+    """replace_all() must exit every existing scene and enter only the new one.
+
+    Spec: "exit **all** scenes, enter new one (use for hard navigation:
+    'Exit to Menu' from pause)".  No on_resume for any evicted scene.
+    """
+
+    def setup_method(self):
+        self.sm  = SceneManager()
+        self.log: List[str] = []
+
+    def _scene(self, name: str) -> StubScene:
+        return StubScene(name, self.log)
+
+    def test_replace_all_calls_on_enter_for_new_scene(self):
+        a, b = self._scene("a"), self._scene("b")
+        self.sm.push(a)
+        self.log.clear()
+        self.sm.replace_all(b)
+        assert "b.on_enter" in self.log
+
+    def test_replace_all_calls_on_exit_for_every_existing_scene(self):
+        a, b, c = self._scene("a"), self._scene("b"), self._scene("c")
+        self.sm.push(a)
+        self.sm.push(b)
+        self.log.clear()
+        self.sm.replace_all(c)
+        assert "a.on_exit" in self.log
+        assert "b.on_exit" in self.log
+
+    def test_replace_all_does_not_call_on_resume_for_any_evicted_scene(self):
+        """on_resume must never fire during a replace_all — it is a hard reset."""
+        a, b, c = self._scene("a"), self._scene("b"), self._scene("c")
+        self.sm.push(a)
+        self.sm.push(b)
+        self.log.clear()
+        self.sm.replace_all(c)
+        assert "a.on_resume" not in self.log
+        assert "b.on_resume" not in self.log
+
+    def test_replace_all_leaves_only_new_scene_on_stack(self):
+        a = self._scene("a")
+        b = self._scene("b")
+        self.sm.push(a)
+        self.sm.replace_all(b)
+        assert self.sm.depth() == 1
+        assert self.sm.active is b
+
+    def test_replace_all_on_empty_stack_enters_new_scene_without_raising(self):
+        b = self._scene("b")
+        self.sm.replace_all(b)
+        assert self.sm.active is b
+
+    def test_replace_all_clears_deep_stack_to_single_entry(self):
+        scenes = [self._scene(str(i)) for i in range(5)]
+        for s in scenes:
+            self.sm.push(s)
+        fresh = self._scene("fresh")
+        self.sm.replace_all(fresh)
+        assert self.sm.depth() == 1
+        assert self.sm.active is fresh
+
+
+# ── replace / pop edge cases ──────────────────────────────────────────────────
+
+
+class TestSceneManagerEdgeCases:
+    """Edge cases not captured by the happy-path tests above."""
+
+    def setup_method(self):
+        self.sm  = SceneManager()
+        self.log: List[str] = []
+
+    def _scene(self, name: str) -> StubScene:
+        return StubScene(name, self.log)
+
+    def test_replace_on_empty_stack_enters_new_scene(self):
+        """replace() on an empty stack must still call on_enter for the new scene."""
+        b = self._scene("b")
+        self.sm.replace(b)
+        assert self.sm.active is b
+        assert "b.on_enter" in self.log
+
+    def test_replace_does_not_call_on_resume_for_scene_below(self):
+        """replace() is a peer transition — the scene below must NOT get on_resume.
+
+        Spec: 'replace — exit top scene, enter new one, no on_resume for
+        scene below (use for peer transitions: MainMenu → HomeBase)'.
+        """
+        a, b, c = self._scene("a"), self._scene("b"), self._scene("c")
+        self.sm.push(a)
+        self.sm.push(b)
+        self.log.clear()
+        self.sm.replace(c)
+        # c replaces b; a is the scene below and must NOT receive on_resume
+        assert "a.on_resume" not in self.log
+
+    def test_pop_single_scene_does_not_call_on_resume(self):
+        """When the last scene is popped, there is nothing below to resume."""
+        a = self._scene("a")
+        self.sm.push(a)
+        self.log.clear()
+        self.sm.pop()
+        assert all("on_resume" not in entry for entry in self.log)
+
+    def test_is_empty_works_as_a_truthy_property(self):
+        """sm.is_empty (without parentheses) must be truthy when the stack is empty."""
+        assert self.sm.is_empty
+
+    def test_is_empty_works_as_a_callable(self):
+        """sm.is_empty() (called) must return True when the stack is empty."""
+        assert self.sm.is_empty()
+
+    def test_is_empty_property_false_after_push(self):
+        self.sm.push(self._scene("a"))
+        assert not self.sm.is_empty
+
+    def test_is_empty_callable_false_after_push(self):
+        self.sm.push(self._scene("a"))
+        assert not self.sm.is_empty()

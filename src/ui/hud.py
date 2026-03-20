@@ -186,6 +186,10 @@ class HUD:
         if self._levelup_banner_timer > 0:
             self._draw_levelup_banner(surface)
 
+        # 9. Zone-entry label
+        if self._zone_label_timer > 0 and self._zone_label:
+            self._draw_zone_label(surface)
+
     def _ensure_fonts(self) -> None:
         if self._fonts_ready:
             return
@@ -359,6 +363,22 @@ class HUD:
                 hotkey=str(i + 1), count=count, font=self._font_sm,
             )
             icon_slot.draw(surface)
+
+    def _draw_zone_label(self, surface: pygame.Surface) -> None:
+        """Render a centred translucent zone-name banner, fading out over 2.5 s."""
+        alpha = int(255 * min(1.0, self._zone_label_timer / 0.4))
+        label_font = pygame.font.SysFont('monospace', 24, bold=True)
+        text_surf = label_font.render(self._zone_label, True, ACCENT_CYAN)
+        pad_x, pad_y = 24, 10
+        banner_w = text_surf.get_width() + pad_x * 2
+        banner_h = text_surf.get_height() + pad_y * 2
+        banner_x = SCREEN_W // 2 - banner_w // 2
+        banner_y = SCREEN_H // 2 - 140
+        bg = pygame.Surface((banner_w, banner_h), pygame.SRCALPHA)
+        bg.fill((0, 0, 0, min(alpha, 160)))
+        surface.blit(bg, (banner_x, banner_y))
+        text_surf.set_alpha(alpha)
+        surface.blit(text_surf, (banner_x + pad_x, banner_y + pad_y))
 
     def _draw_damage_vignette(self, surface):
         intensity = self._damage_flash_timer / _DAMAGE_FLASH_DURATION
