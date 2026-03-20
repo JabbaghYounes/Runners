@@ -5,7 +5,16 @@ Runtime user preferences (volume, resolution overrides, key bindings) live in
 src/core/settings.py and are loaded from settings.json.
 """
 
+import enum
+
 import pygame  # pygame constants are plain integers — safe to import before init()
+
+
+# ── Faction enum ───────────────────────────────────────────────────────────────
+class Faction(enum.Enum):
+    """Combat faction tag — used by CombatSystem to route projectile damage."""
+    PLAYER = "player"
+    ENEMY = "enemy"
 
 # ── Display ───────────────────────────────────────────────────────────────────
 DEFAULT_WIDTH  = 1280
@@ -128,6 +137,9 @@ PVP_AGENT_COUNT: int = 3
 PVP_FRIENDLY_FIRE: bool = True
 PVP_AGENT_AGGRO_RANGE: float = 300.0
 PVP_AGENT_SHOOT_RANGE: float = 150.0
+PVP_AGENT_PATROL_SPEED: float = 60.0    # px/s — bot patrol speed
+PVP_AGENT_MOVE_SPEED: float = 120.0     # px/s — bot chase speed
+PVP_LOOT_DETECT_RANGE: float = 96.0    # px — bot loot pickup detection radius
 
 # ── Default key bindings (fallback when settings.json is missing a binding) ───
 DEFAULT_KEYS: dict[str, int] = {

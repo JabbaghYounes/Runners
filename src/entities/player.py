@@ -11,6 +11,7 @@ from src.constants import (
     JUMP_VEL, SLIDE_VEL, SLIDE_DURATION,
     NORMAL_HEIGHT, CROUCH_HEIGHT,
     KEY_BINDINGS,
+    Faction,
 )
 from src.entities.entity import Entity
 
@@ -107,6 +108,9 @@ class Player(Entity):
 
         # EventBus (optional)
         self._event_bus = event_bus
+
+        # Faction tag (used by CombatSystem for damage routing)
+        self.faction: Faction = Faction.PLAYER
 
         # Health / armor
         self.max_health: int = max_health

@@ -1,8 +1,11 @@
 """Robot enemy entity with FSM state and configurable stats."""
+from __future__ import annotations
+
 import pygame
 from enum import Enum, auto
 from typing import Tuple, List, Dict, Any, Optional
 from src.entities.entity import Entity
+from src.constants import Faction
 
 
 class AIState(Enum):
@@ -52,6 +55,9 @@ class RobotEnemy(Entity):
         self.xp_reward: int = xp_reward
         self.loot_table: List[Dict[str, Any]] = loot_table or []
         self.patrol_waypoints: List[Tuple[float, float]] = patrol_waypoints if patrol_waypoints is not None else [(float(x), float(y))]
+
+        # Faction tag (used by CombatSystem for damage routing)
+        self.faction: Faction = Faction.ENEMY
 
         # FSM state
         self.state: AIState = AIState.PATROL
