@@ -7,10 +7,12 @@ PauseMenu draws a semi-transparent vignette over it followed by the panel.
 
 Buttons:
     RESUME       -- pops PauseMenu, GameScene resumes.
-    RESTART      -- ConfirmDialog -> replace(GameScene).
+    SETTINGS     -- pushes SettingsScreen overlay.
+    RESTART      -- ConfirmDialog -> replace_all(GameScene).
     EXIT TO MENU -- ConfirmDialog -> replace_all(MainMenu).
 
 ESC key is equivalent to RESUME.
+Arrow keys / W / S navigate between buttons; Enter / Space activates.
 """
 from __future__ import annotations
 
@@ -37,10 +39,10 @@ def _load_font(assets, name, size):
 
 
 class PauseMenu(BaseScene):
-    """Semi-transparent pause overlay with RESUME / RESTART / EXIT TO MENU."""
+    """Semi-transparent pause overlay with RESUME / SETTINGS / RESTART / EXIT TO MENU."""
 
     _PANEL_W = 260
-    _PANEL_H = 240
+    _PANEL_H = 294  # 4 buttons × 52 px row + top padding + bottom margin
 
     def __init__(
         self,
@@ -76,7 +78,7 @@ class PauseMenu(BaseScene):
             glow=True,
         )
 
-        # Buttons
+        # Buttons (52 px stride starting at py + 90)
         bw, bh = 210, 40
         bx = SCREEN_W // 2 - bw // 2
 
@@ -87,20 +89,36 @@ class PauseMenu(BaseScene):
             "primary",
             self._on_resume,
         )
-        self._btn_restart = Button(
+        self._btn_settings = Button(
             pygame.Rect(bx, py + 142, bw, bh),
+            "SETTINGS",
+            font_btn,
+            "secondary",
+            self._on_settings,
+        )
+        self._btn_restart = Button(
+            pygame.Rect(bx, py + 194, bw, bh),
             "RESTART",
             font_btn,
             "secondary",
             self._on_restart,
         )
         self._btn_exit = Button(
-            pygame.Rect(bx, py + 194, bw, bh),
+            pygame.Rect(bx, py + 246, bw, bh),
             "EXIT TO MENU",
             font_btn,
             "secondary",
             self._on_exit,
         )
+
+        # Ordered list used by keyboard navigation (index → button)
+        self._nav_btns: List[Button] = [
+            self._btn_resume,
+            self._btn_settings,
+            self._btn_restart,
+            self._btn_exit,
+        ]
+        self._focused_idx: int = 0  # 0 = RESUME pre-selected
 
         # Confirm dialogs
         self._confirm_restart = ConfirmDialog(
@@ -129,6 +147,13 @@ class PauseMenu(BaseScene):
     def _on_resume(self) -> None:
         self._sm.pop()
 
+    def _on_settings(self) -> None:
+        try:
+            from src.scenes.settings_screen import SettingsScreen
+            self._sm.push(SettingsScreen(self._sm, self._settings, self._assets))
+        except Exception as e:
+            print(f"[PauseMenu] SettingsScreen push failed: {e}")
+
     def _on_restart(self) -> None:
         self._confirm_restart.show((SCREEN_W, SCREEN_H))
 
@@ -138,7 +163,7 @@ class PauseMenu(BaseScene):
     def _on_restart_confirmed(self) -> None:
         self._confirm_restart.hide()
         from src.scenes.game_scene import GameScene
-        self._sm.replace(GameScene(self._sm, self._settings, self._assets))
+        self._sm.replace_all(GameScene(self._sm, self._settings, self._assets))
 
     def _on_exit_confirmed(self) -> None:
         self._confirm_exit.hide()
@@ -151,7 +176,7 @@ class PauseMenu(BaseScene):
 
     def handle_events(self, events: List[pygame.event.Event]) -> None:
         for event in events:
-            # Confirm dialogs take priority
+            # Active confirm dialogs intercept all input
             if self._confirm_restart.active:
                 self._confirm_restart.handle_event(event)
                 continue
@@ -159,11 +184,25 @@ class PauseMenu(BaseScene):
                 self._confirm_exit.handle_event(event)
                 continue
 
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                self._on_resume()
-                return
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self._on_resume()
+                    return
+                # Keyboard navigation
+                if event.key in (pygame.K_UP, pygame.K_w):
+                    self._focused_idx = (self._focused_idx - 1) % len(self._nav_btns)
+                    continue
+                if event.key in (pygame.K_DOWN, pygame.K_s):
+                    self._focused_idx = (self._focused_idx + 1) % len(self._nav_btns)
+                    continue
+                if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                    btn = self._nav_btns[self._focused_idx]
+                    if btn.on_click:
+                        btn.on_click()
+                    continue
 
             self._btn_resume.handle_event(event)
+            self._btn_settings.handle_event(event)
             self._btn_restart.handle_event(event)
             self._btn_exit.handle_event(event)
 
@@ -174,10 +213,15 @@ class PauseMenu(BaseScene):
         # Vignette over the frozen game world
         screen.blit(self._vignette, (0, 0))
 
+        # Sync keyboard-focus highlight on buttons before drawing
+        for i, btn in enumerate(self._nav_btns):
+            btn._focused = (i == self._focused_idx)
+
         # Panel and controls
         self._panel.draw(screen)
         self._lbl_title.draw(screen)
         self._btn_resume.draw(screen)
+        self._btn_settings.draw(screen)
         self._btn_restart.draw(screen)
         self._btn_exit.draw(screen)
 

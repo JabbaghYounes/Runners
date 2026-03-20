@@ -209,6 +209,10 @@ class GameScene(BaseScene):
         self._event_bus.subscribe('extraction_success', self._on_extract)
         self._event_bus.subscribe('extraction_failed', self._on_extract_failed)
 
+        # Round timer (started in on_enter to align with scene lifecycle)
+        from src.systems.round_timer import RoundTimer
+        self._round_timer = RoundTimer(self._event_bus)
+
         self._full_init = True
 
     def _init_stub(self, zones_override):
@@ -233,6 +237,8 @@ class GameScene(BaseScene):
         self._challenge = None
         if not hasattr(self, '_audio_sys'):
             self._audio_sys = None
+
+        self._round_timer = None
 
         # Apply home base bonuses in stub mode too
         if self._home_base is not None:
@@ -340,10 +346,15 @@ class GameScene(BaseScene):
     # ------------------------------------------------------------------
 
     def on_enter(self) -> None:
-        pass
+        round_timer = getattr(self, '_round_timer', None)
+        if round_timer is not None:
+            round_timer.start()
 
     def on_exit(self) -> None:
-        pass
+        if self._full_init:
+            self._event_bus.unsubscribe('enemy_killed', self._on_enemy_killed)
+            self._event_bus.unsubscribe('extraction_success', self._on_extract)
+            self._event_bus.unsubscribe('extraction_failed', self._on_extract_failed)
 
     def handle_events(self, events: List[pygame.event.Event]) -> None:
         for event in events:
@@ -469,6 +480,10 @@ class GameScene(BaseScene):
                 self._hud.update(self._build_hud_state(), dt)
             except Exception:
                 pass
+
+        # Round timer
+        if self._round_timer:
+            self._round_timer.update(dt)
 
         # Audio forwarding
         if self._audio is not None:
@@ -743,6 +758,9 @@ class GameScene(BaseScene):
     def _push_pause(self) -> None:
         try:
             from src.scenes.pause_menu import PauseMenu
+            # Guard against rapid double-ESC stacking two PauseMenus
+            if isinstance(self._sm.active, PauseMenu):
+                return
             self._sm.push(PauseMenu(self._sm, self._settings, self._assets))
         except Exception as e:
             print(f"[GameScene] PauseMenu push failed: {e}")

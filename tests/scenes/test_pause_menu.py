@@ -1,9 +1,11 @@
 """Unit tests for src.scenes.pause_menu.PauseMenu.
 
+# Run: pytest tests/scenes/test_pause_menu.py
+
 Covers:
   - Construction and initial state
   - RESUME (button + ESC key) → sm.pop()
-  - RESTART → shows confirm dialog → sm.replace(GameScene)
+  - RESTART → shows confirm dialog → sm.replace_all(GameScene)
   - EXIT TO MENU → shows confirm dialog → sm.replace_all(MainMenu)
   - Confirm dialogs swallow events while active
   - update / render smoke tests
@@ -12,6 +14,11 @@ from unittest.mock import MagicMock
 
 import pygame
 import pytest
+
+# Ensure pygame (including pygame.font) is initialised before any fixture
+# or test in this module attempts to construct UI widgets.
+pygame.init()
+pygame.display.set_mode((1, 1))
 
 from src.core.scene_manager import SceneManager
 from src.core.settings import Settings
@@ -112,11 +119,11 @@ class TestPauseMenuRestart:
         pause_menu._on_restart()
         mock_sm.replace.assert_not_called()
 
-    def test_on_restart_confirmed_calls_replace_with_game_scene(self, pause_menu, mock_sm):
+    def test_on_restart_confirmed_calls_replace_all_with_game_scene(self, pause_menu, mock_sm):
         from src.scenes.game_scene import GameScene
         pause_menu._on_restart_confirmed()
-        mock_sm.replace.assert_called_once()
-        replaced = mock_sm.replace.call_args[0][0]
+        mock_sm.replace_all.assert_called_once()
+        replaced = mock_sm.replace_all.call_args[0][0]
         assert isinstance(replaced, GameScene)
 
     def test_on_restart_confirmed_hides_dialog(self, pause_menu):
@@ -126,12 +133,12 @@ class TestPauseMenuRestart:
 
     def test_restart_game_scene_has_same_settings(self, pause_menu, mock_sm, settings):
         pause_menu._on_restart_confirmed()
-        created = mock_sm.replace.call_args[0][0]
+        created = mock_sm.replace_all.call_args[0][0]
         assert created._settings is settings
 
     def test_restart_game_scene_has_same_scene_manager(self, pause_menu, mock_sm):
         pause_menu._on_restart_confirmed()
-        created = mock_sm.replace.call_args[0][0]
+        created = mock_sm.replace_all.call_args[0][0]
         assert created._sm is mock_sm
 
 

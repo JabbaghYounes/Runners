@@ -118,9 +118,10 @@ class SceneManager:
             self._stack[-1].update(dt)
 
     def render(self, screen: pygame.Surface) -> None:
-        """Render the active scene to *screen*."""
-        if self._stack:
-            self._stack[-1].render(screen)
+        """Render all scenes in stack order (bottom to top), so overlay scenes
+        such as ``PauseMenu`` are drawn over the scenes beneath them."""
+        for scene in self._stack:
+            scene.render(screen)
 
     # ── Queries ───────────────────────────────────────────────────────────────
 
