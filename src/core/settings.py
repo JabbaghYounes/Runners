@@ -29,6 +29,27 @@ class Settings:
     master_volume: float              = 1.0
     key_bindings:  Dict[str, int]     = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        """Clamp all numeric fields to their valid ranges.
+
+        Applied on every construction path (direct instantiation, ``load()``,
+        and any future factory method) so callers never need to validate
+        themselves.
+
+        Ranges
+        ------
+        ``target_fps``              10 – 300  (prevents ÷0 in clock; caps runaway)
+        ``*_volume``                0.0 – 1.0 (pygame mixer range)
+        ``resolution`` dimensions   ≥ 320     (minimum usable window size)
+        """
+        self.target_fps    = max(10, min(300, int(self.target_fps)))
+        self.music_volume  = max(0.0, min(1.0, float(self.music_volume)))
+        self.sfx_volume    = max(0.0, min(1.0, float(self.sfx_volume)))
+        self.master_volume = max(0.0, min(1.0, float(self.master_volume)))
+        w = max(320, int(self.resolution[0]))
+        h = max(320, int(self.resolution[1]))
+        self.resolution    = (w, h)
+
     # ── Factory ───────────────────────────────────────────────────────────────
 
     @classmethod
