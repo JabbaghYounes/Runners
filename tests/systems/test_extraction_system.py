@@ -112,12 +112,18 @@ def make_system(
 
 def player_in_zone() -> Player:
     """Player positioned squarely inside the default zone."""
-    return Player(x=_INSIDE_XY[0], y=_INSIDE_XY[1], width=32, height=32)
+    p = Player(x=_INSIDE_XY[0], y=_INSIDE_XY[1], width=32, height=32)
+    # ExtractionSystem reads player.velocity.length(); Player stores vx/vy
+    # separately, so we pre-attach the Vector2 attribute that the system expects.
+    p.velocity = pygame.Vector2(0.0, 0.0)
+    return p
 
 
 def player_outside_zone() -> Player:
     """Player positioned well outside the default zone."""
-    return Player(x=_OUTSIDE_XY[0], y=_OUTSIDE_XY[1], width=32, height=32)
+    p = Player(x=_OUTSIDE_XY[0], y=_OUTSIDE_XY[1], width=32, height=32)
+    p.velocity = pygame.Vector2(0.0, 0.0)
+    return p
 
 
 def keys_f_held() -> list[bool]:
@@ -408,42 +414,45 @@ class TestSuccessfulExtraction:
         _advance_to_done(system, player, 3.0)
         assert system.state is ExtractionState.DONE
 
-    def test_extraction_success_event_published(self):
+    def test_player_extracted_event_published(self):
+        """Completing the channel must emit 'player_extracted', not 'extraction_success'."""
         system, bus = make_system(duration=3.0)
-        successes: list = []
-        bus.subscribe("extraction_success", lambda **kw: successes.append(kw))
+        extractions: list = []
+        bus.subscribe("player_extracted", lambda **kw: extractions.append(kw))
         player = player_in_zone()
         _advance_to_done(system, player, 3.0)
-        assert len(successes) == 1
+        assert len(extractions) == 1
 
-    def test_extraction_success_carries_loot_snapshot(self):
+    def test_player_extracted_carries_inventory_snapshot(self):
+        """The 'player_extracted' payload must include 'inventory_snapshot' with all items."""
         system, bus = make_system(duration=3.0)
-        successes: list = []
-        bus.subscribe("extraction_success", lambda **kw: successes.append(kw))
+        extractions: list = []
+        bus.subscribe("player_extracted", lambda **kw: extractions.append(kw))
         player = player_in_zone()
         item = {"id": "medkit", "qty": 1}
         player.inventory.append(item)
         _advance_to_done(system, player, 3.0)
-        assert successes[0]["loot"] == [item]
+        assert extractions[0]["inventory_snapshot"] == [item]
 
-    def test_extraction_success_loot_is_a_copy(self):
-        """Mutating inventory after extraction must not affect the payload copy."""
+    def test_inventory_snapshot_is_a_copy(self):
+        """Mutating inventory after extraction must not affect the payload snapshot."""
         system, bus = make_system(duration=3.0)
-        successes: list = []
-        bus.subscribe("extraction_success", lambda **kw: successes.append(kw))
+        extractions: list = []
+        bus.subscribe("player_extracted", lambda **kw: extractions.append(kw))
         player = player_in_zone()
         player.inventory.append({"id": "rifle"})
         _advance_to_done(system, player, 3.0)
         player.inventory.clear()           # mutate the live inventory
-        assert len(successes[0]["loot"]) == 1
+        assert len(extractions[0]["inventory_snapshot"]) == 1
 
-    def test_extraction_success_with_empty_inventory(self):
+    def test_inventory_snapshot_empty_when_inventory_is_empty(self):
+        """Extracting with an empty inventory must yield an empty snapshot."""
         system, bus = make_system(duration=3.0)
-        successes: list = []
-        bus.subscribe("extraction_success", lambda **kw: successes.append(kw))
+        extractions: list = []
+        bus.subscribe("player_extracted", lambda **kw: extractions.append(kw))
         player = player_in_zone()
         _advance_to_done(system, player, 3.0)
-        assert successes[0]["loot"] == []
+        assert extractions[0]["inventory_snapshot"] == []
 
     def test_is_done_true_after_success(self):
         system, _ = make_system(duration=3.0)
@@ -459,15 +468,15 @@ class TestSuccessfulExtraction:
         system.update(10.0, player, keys_f_released())
         assert system.state is ExtractionState.DONE
 
-    def test_extraction_success_fires_exactly_once(self):
-        """extraction_success must not re-fire on continued updates."""
+    def test_player_extracted_fires_exactly_once(self):
+        """player_extracted must not re-fire on continued updates after DONE."""
         system, bus = make_system(duration=3.0)
-        successes: list = []
-        bus.subscribe("extraction_success", lambda **kw: successes.append(kw))
+        extractions: list = []
+        bus.subscribe("player_extracted", lambda **kw: extractions.append(kw))
         player = player_in_zone()
         _advance_to_done(system, player, 3.0)
         system.update(10.0, player, keys_f_held())  # further update after DONE
-        assert len(successes) == 1
+        assert len(extractions) == 1
 
     def test_state_not_done_before_channel_complete(self):
         """Partial channel progress must not advance to DONE."""
@@ -573,13 +582,13 @@ class TestExtractionFailed:
         bus.publish("round_end")
         assert failed == []
 
-    def test_success_not_fired_by_round_end(self):
-        """round_end must never spuriously emit extraction_success."""
+    def test_player_extracted_not_fired_by_round_end(self):
+        """round_end must never spuriously emit player_extracted."""
         system, bus = make_system()
-        successes: list = []
-        bus.subscribe("extraction_success", lambda **kw: successes.append(kw))
+        extractions: list = []
+        bus.subscribe("player_extracted", lambda **kw: extractions.append(kw))
         bus.publish("round_end")
-        assert successes == []
+        assert extractions == []
 
     def test_failed_fires_exactly_once_per_round_end(self):
         """extraction_failed must not be emitted more than once per round_end."""
@@ -615,3 +624,72 @@ class TestIsInZone:
         player = player_in_zone()
         _advance_to_done(system, player, 3.0)
         assert not system.is_in_zone
+
+
+# ===========================================================================
+# Dead-player cancellation
+# ===========================================================================
+
+class TestDeadPlayerCancelsChanneling:
+    """Player dying mid-channel must cancel immediately via extraction_cancelled."""
+
+    def test_dead_player_returns_to_in_zone(self):
+        """Alive=False during CHANNELING must transition back to IN_ZONE."""
+        system, _ = make_system(duration=10.0)
+        player = player_in_zone()
+        _advance_to_channeling(system, player)
+        player.alive = False
+        system.update(_FRAME, player, keys_f_held())
+        assert system.state is ExtractionState.IN_ZONE
+
+    def test_dead_player_emits_extraction_cancelled(self):
+        """Dying while channeling must publish extraction_cancelled."""
+        system, bus = make_system(duration=10.0)
+        cancelled: list = []
+        bus.subscribe("extraction_cancelled", lambda **kw: cancelled.append(True))
+        player = player_in_zone()
+        _advance_to_channeling(system, player)
+        player.alive = False
+        system.update(_FRAME, player, keys_f_held())
+        assert len(cancelled) == 1
+
+    def test_dead_player_resets_channel_progress(self):
+        """Channel progress must be zeroed when the player dies mid-channel."""
+        system, _ = make_system(duration=10.0)
+        player = player_in_zone()
+        _advance_to_channeling(system, player)
+        system.update(5.0, player, keys_f_held())  # accumulate 5 / 10 = 50 %
+        assert system.channel_progress == pytest.approx(0.5)
+        player.alive = False
+        system.update(_FRAME, player, keys_f_held())
+        assert system.channel_progress == pytest.approx(0.0)
+
+    def test_dead_player_does_not_emit_player_extracted(self):
+        """Player death must NOT accidentally fire player_extracted."""
+        system, bus = make_system(duration=10.0)
+        extractions: list = []
+        bus.subscribe("player_extracted", lambda **kw: extractions.append(kw))
+        player = player_in_zone()
+        _advance_to_channeling(system, player)
+        player.alive = False
+        system.update(_FRAME, player, keys_f_held())
+        assert extractions == []
+
+    def test_death_in_idle_does_not_crash(self):
+        """Dying while IDLE (outside zone) must not affect FSM."""
+        system, _ = make_system()
+        player = player_outside_zone()
+        player.alive = False
+        system.update(_FRAME, player, keys_f_released())  # must not raise
+        assert system.state is ExtractionState.IDLE
+
+    def test_death_in_in_zone_does_not_crash(self):
+        """Dying while IN_ZONE (before holding F) must not affect FSM."""
+        system, _ = make_system()
+        player = player_in_zone()
+        system.update(_FRAME, player, keys_f_released())  # enter IN_ZONE
+        assert system.state is ExtractionState.IN_ZONE
+        player.alive = False
+        system.update(_FRAME, player, keys_f_released())  # must not raise
+        # State may move back to IDLE (no explicit spec), but must not crash
+        assert system.state in (ExtractionState.IDLE, ExtractionState.IN_ZONE)

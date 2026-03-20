@@ -161,6 +161,14 @@ class GameScene(BaseScene):
         except Exception:
             self._audio_sys = None
 
+        # Extraction zone — stored separately for rendering.
+        try:
+            from src.map.extraction_zone import ExtractionZone
+            _ext_rect = self.tile_map.extraction_rect or pygame.Rect(0, 0, 32, 32)
+            self._extraction_zone = ExtractionZone(rect=_ext_rect)
+        except Exception:
+            self._extraction_zone = None
+
         # Extraction system
         try:
             from src.systems.extraction import ExtractionSystem
@@ -204,10 +212,18 @@ class GameScene(BaseScene):
         if self._skill_tree is not None:
             self._apply_skill_tree_bonuses(self.player, self._skill_tree)
 
+        # In-round loot tracking (items picked up after the round started)
+        self._in_round_loot: list = []
+        # Per-round counters
+        self._kill_count: int = 0
+        # Pulse animation time accumulator for extraction zone visual
+        self._pulse_time: float = 0.0
+
         # Subscribe events
         self._event_bus.subscribe('enemy_killed', self._on_enemy_killed)
         self._event_bus.subscribe('extraction_success', self._on_extract)
         self._event_bus.subscribe('extraction_failed', self._on_extract_failed)
+        self._event_bus.subscribe('item_picked_up', self._on_item_picked_up)
 
         self._full_init = True
 
@@ -373,11 +389,15 @@ class GameScene(BaseScene):
             self._update_stub(dt)
 
     def _update_full(self, dt: float) -> None:
+        self._pulse_time += dt
         try:
+            from src.constants import KEY_EXTRACT
             keys = pygame.key.get_pressed()
             self._e_held = bool(keys[pygame.K_e])
+            self._extract_held = bool(keys[KEY_EXTRACT])
         except Exception:
             self._e_held = False
+            self._extract_held = False
 
         # Physics
         if self._physics:
@@ -739,6 +759,11 @@ class GameScene(BaseScene):
             ))
         except Exception as e:
             print(f"[GameScene] PostRound push failed: {e}")
+
+    def _on_item_picked_up(self, **kwargs: Any) -> None:
+        item = kwargs.get('item')
+        if item is not None:
+            self._in_round_loot.append(item)
 
     def _push_pause(self) -> None:
         try:
