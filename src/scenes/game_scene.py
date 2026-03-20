@@ -146,6 +146,7 @@ class GameScene(BaseScene):
         except Exception:
             self._loot_sys = None
         self._buff = BuffSystem()
+        self.player.set_buff_system(self._buff)
 
         # Challenge system
         try:
@@ -356,6 +357,15 @@ class GameScene(BaseScene):
                     return
                 elif event.key == pygame.K_m:
                     self._map_overlay_visible = not self._map_overlay_visible
+                elif event.key in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4):
+                    if self._full_init and self.player.alive:
+                        _qs_map = {pygame.K_1: 0, pygame.K_2: 1, pygame.K_3: 2, pygame.K_4: 3}
+                        try:
+                            self.player.inventory.use_consumable(
+                                _qs_map[event.key], self.player
+                            )
+                        except Exception:
+                            pass
 
         if not self._map_overlay_visible and self._full_init:
             try:
@@ -590,7 +600,7 @@ class GameScene(BaseScene):
     # ------------------------------------------------------------------
 
     def _build_hud_state(self):
-        from src.ui.hud_state import HUDState, ZoneInfo, WeaponInfo
+        from src.ui.hud_state import HUDState, ZoneInfo, WeaponInfo, BuffEntry, ConsumableSlot
 
         tile_map = getattr(self, 'tile_map', None)
         ext_rect = getattr(tile_map, 'extraction_rect', None) if tile_map else None
@@ -630,6 +640,38 @@ class GameScene(BaseScene):
         else:
             map_rect = pygame.Rect(0, 0, 1280, 720)
 
+        # Helper: resolve an asset icon without raising
+        def _get_icon(key: str):
+            if not self._assets or not key:
+                return None
+            try:
+                return self._assets.get_sprite(key)
+            except Exception:
+                return None
+
+        # Build active-buff entries from player's live buff list
+        active_buffs = [
+            BuffEntry(
+                label=b.buff_type,
+                seconds_left=b.time_remaining,
+                icon=_get_icon(b.icon_key),
+            )
+            for b in self.player.active_buffs
+        ]
+
+        # Build quick-slot cells (4 slots, index 0–3)
+        consumable_slots: list = []
+        if hasattr(self.player.inventory, 'quick_slot_item'):
+            for qs_idx in range(self.player.inventory.QUICK_SLOT_COUNT):
+                item = self.player.inventory.quick_slot_item(qs_idx)
+                if item:
+                    icon_key = getattr(item, 'sprite_key', '') or getattr(item, 'sprite', '')
+                    consumable_slots.append(
+                        ConsumableSlot(label=item.name, count=1, icon=_get_icon(icon_key))
+                    )
+                else:
+                    consumable_slots.append(ConsumableSlot(label="", count=0))
+
         return HUDState(
             hp=float(self.player.health),
             max_hp=float(self.player.max_health),
@@ -666,6 +708,8 @@ class GameScene(BaseScene):
                 if self._challenge and hasattr(self._challenge, 'get_active_challenges')
                 else []
             ),
+            active_buffs=active_buffs,
+            consumable_slots=consumable_slots,
         )
 
     # ------------------------------------------------------------------
