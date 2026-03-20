@@ -61,6 +61,9 @@ class GameScene(BaseScene):
         # Loot value bonus from home base
         self.loot_value_bonus: float = 0.0
 
+        # SpawnSystem reference retained for teardown in on_exit().
+        self._spawn_sys: Any = None
+
         # Try to load the full map-based setup when a scene manager is provided.
         self._full_init = False
         _want_full = self._sm is not None
@@ -98,11 +101,6 @@ class GameScene(BaseScene):
         w, h = self._settings.resolution_tuple
         self.camera: Camera = Camera(w, h, mr.w, mr.h)
 
-        # Player
-        sx, sy = self.tile_map.player_spawn
-        self.player: Player = Player(sx, sy)
-        self._player = self.player
-
         # Databases
         self._item_db = ItemDatabase.instance()
         if not self._item_db.item_ids:
@@ -115,24 +113,16 @@ class GameScene(BaseScene):
         if os.path.exists(enemies_path):
             self._enemy_db.load(enemies_path)
 
-        # Enemies
-        spawn_sys = SpawnSystem()
-        self.enemies: List[Any] = spawn_sys.spawn_all_zones(
-            self.tile_map.zones, self._enemy_db
+        # Spawn all entities via SpawnSystem (loot → enemies → bots → player)
+        self._spawn_sys = SpawnSystem(event_bus=self._event_bus)
+        _result = self._spawn_sys.spawn_round(
+            self.tile_map, self._enemy_db, self._item_db
         )
-
-        # Loot
-        self.loot_items: list = []
-        try:
-            from src.entities.loot_item import LootItem
-            for lx, ly in self.tile_map.loot_spawns:
-                item_id = random.choice(self._item_db.item_ids) if self._item_db.item_ids else None
-                if item_id:
-                    item = self._item_db.create(item_id)
-                    if item:
-                        self.loot_items.append(LootItem(lx, ly, item))
-        except Exception:
-            pass
+        self.player: Player = _result.player
+        self._player = self.player
+        self.enemies: List[Any] = _result.enemies
+        self.pvp_bots: List[Any] = _result.pvp_bots
+        self.loot_items: List[Any] = _result.loot_items
 
         # Projectiles
         self.projectiles: list = []
@@ -219,6 +209,7 @@ class GameScene(BaseScene):
         self._player = self.player
         self.player.alive = True
         self.enemies = []
+        self.pvp_bots = []
         self.loot_items = []
         self.projectiles = []
         self._zones = zones_override if zones_override is not None else self._default_zones()
@@ -381,7 +372,11 @@ class GameScene(BaseScene):
 
         # Physics
         if self._physics:
-            all_physical = [self.player] + [e for e in self.enemies if e.alive]
+            all_physical = (
+                [self.player]
+                + [e for e in self.enemies if e.alive]
+                + [b for b in self.pvp_bots if b.alive]
+            )
             self._physics.update(all_physical, self.tile_map, dt)
 
         # Projectile movement
@@ -562,6 +557,14 @@ class GameScene(BaseScene):
             if enemy.alive:
                 try:
                     enemy.render(screen, cam_off)
+                except Exception:
+                    pass
+
+        # PvP bots (same layer as enemies)
+        for bot in self.pvp_bots:
+            if bot.alive:
+                try:
+                    bot.render(screen, cam_off)
                 except Exception:
                     pass
 

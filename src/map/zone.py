@@ -24,12 +24,15 @@ class Zone:
     spawn_points: Optional[List[Tuple[float, float]]] = field(default_factory=list)
     music_track: Optional[str] = None
     enemy_spawns: Optional[List[dict]] = field(default_factory=list)
+    pvp_bot_spawns: Optional[List[Tuple[float, float]]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.spawn_points is None:
             self.spawn_points = []
         if self.enemy_spawns is None:
             self.enemy_spawns = []
+        if self.pvp_bot_spawns is None:
+            self.pvp_bot_spawns = []
 
     def contains(self, pos: Tuple[float, float]) -> bool:
         """Return True if *pos* falls within the zone's bounding rectangle."""

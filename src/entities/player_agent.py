@@ -41,6 +41,13 @@ class PlayerAgent(Entity):
         self.driver = driver
         self.inventory = _Inventory()
 
+        # Physics state — required by PhysicsSystem._step()
+        self.vx: float = 0.0
+        self.vy: float = 0.0
+        self.on_ground: bool = False
+        self.target_vx: float = 0.0
+        self.slide_timer: float = 0.0
+
     def take_damage(self, amount: int) -> None:
         """Reduce health by *amount*; set ``alive = False`` on lethal damage."""
         self.health -= amount
