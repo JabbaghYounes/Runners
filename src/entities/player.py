@@ -112,6 +112,9 @@ class Player(Entity):
         # EventBus (optional)
         self._event_bus = event_bus
 
+        # Faction tag (used by CombatSystem for damage routing)
+        self.faction: Faction = Faction.PLAYER
+
         # Health / armor
         self.max_health: int = max_health
         self.health: int = max_health
