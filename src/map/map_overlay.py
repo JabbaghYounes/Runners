@@ -1,10 +1,15 @@
-import pygame
+from __future__ import annotations
+
 import math
-from typing import List, Tuple, Optional, Any
+from typing import Any, List, Optional, Tuple
+
+import pygame
+
 from src.constants import (
     SCREEN_W, SCREEN_H, BG_DEEP, ACCENT_CYAN, ACCENT_GREEN, ACCENT_MAGENTA,
-    BORDER_DIM, BORDER_BRIGHT, PANEL_BG, TEXT_BRIGHT, TEXT_DIM
+    BORDER_DIM, BORDER_BRIGHT, PANEL_BG, TEXT_BRIGHT, TEXT_DIM,
 )
+
 
 class MapOverlay:
     ZONE_COLORS = [
@@ -13,7 +18,7 @@ class MapOverlay:
         (60, 160, 80),
     ]
 
-    def __init__(self, screen_w: int = SCREEN_W, screen_h: int = SCREEN_H):
+    def __init__(self, screen_w: int = SCREEN_W, screen_h: int = SCREEN_H) -> None:
         self.screen_w = screen_w
         self.screen_h = screen_h
         self._font_lg: Optional[pygame.font.Font] = None
@@ -33,9 +38,16 @@ class MapOverlay:
             self._overlay_surf.fill((0, 0, 0, 0))
         return self._overlay_surf
 
-    def render(self, screen: pygame.Surface, zones: List[Any], player_pos: Tuple[float, float],
-               extraction_rect: Optional[pygame.Rect], enemies: List[Any],
-               seconds_remaining: float, map_rect: pygame.Rect) -> None:
+    def render(
+        self,
+        screen: pygame.Surface,
+        zones: List[Any],
+        player_pos: Tuple[float, float],
+        extraction_rect: Optional[pygame.Rect],
+        enemies: List[Any],
+        seconds_remaining: float,
+        map_rect: pygame.Rect,
+    ) -> None:
         self._ensure_fonts()
 
         # Dark overlay
@@ -80,11 +92,16 @@ class MapOverlay:
         pygame.draw.rect(screen, (6, 10, 18), map_bg_rect)
         pygame.draw.rect(screen, BORDER_DIM, map_bg_rect, 1)
 
-        # Zones
+        # Zones — prefer zone.color if available, fall back to indexed palette
         for i, zone in enumerate(zones):
-            color = self.ZONE_COLORS[i % len(self.ZONE_COLORS)]
-            zx1, zy1 = world_to_panel(zone.rect.left, zone.rect.top)
-            zx2, zy2 = world_to_panel(zone.rect.right, zone.rect.bottom)
+            color = getattr(zone, 'color', self.ZONE_COLORS[i % len(self.ZONE_COLORS)])
+            # Normalise rect: accept pygame.Rect or (x, y, w, h) tuple
+            raw_rect = getattr(zone, 'rect', None)
+            if raw_rect is None:
+                continue
+            r = raw_rect if isinstance(raw_rect, pygame.Rect) else pygame.Rect(raw_rect)
+            zx1, zy1 = world_to_panel(r.left, r.top)
+            zx2, zy2 = world_to_panel(r.right, r.bottom)
             zw = max(1, zx2 - zx1)
             zh = max(1, zy2 - zy1)
             zone_surf = pygame.Surface((zw, zh), pygame.SRCALPHA)
