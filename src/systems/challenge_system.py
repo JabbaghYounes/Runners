@@ -8,15 +8,19 @@ Each challenge definition in JSON has:
 - ``id``: unique string identifier
 - ``description``: human-readable text
 - ``criteria_type``: event type that advances progress
-  (``enemy_killed``, ``item_picked_up``, ``zone_entered``)
+  (``enemy_killed``, ``item_picked_up``, ``zone_entered``, ``reach_location``)
 - ``target``: numeric goal
-- ``zone_filter``: optional zone name; when set, only events in that zone count
+- ``zone_filter``: optional zone name key (e.g. ``"cargo_bay"``); when set,
+  only events in that zone count.  For ``reach_location``, the player must
+  visit the named zone at least once.
 - ``reward_xp``: XP granted on completion
 - ``reward_money``: currency granted on completion
+- ``reward_item_id``: optional item ID granted on completion (``null`` for none)
 """
 from __future__ import annotations
 
 import json
+import logging
 import os
 import random
 from dataclasses import dataclass, field
@@ -30,6 +34,8 @@ _DEFAULT_CHALLENGES_PATH = os.path.join(_ROOT, "data", "challenges.json")
 # Number of challenges selected per round by default
 DEFAULT_CHALLENGES_PER_ROUND = 3
 
+_log = logging.getLogger(__name__)
+
 
 @dataclass
 class _ActiveChallenge:
@@ -42,6 +48,7 @@ class _ActiveChallenge:
     zone_filter: Optional[str]
     reward_xp: int
     reward_money: int
+    reward_item_id: Optional[str] = None
     progress: int = 0
     completed: bool = False
 
@@ -130,17 +137,26 @@ class ChallengeSystem:
         count = min(self._challenges_per_round, len(self._pool))
         selected = self._rng.sample(self._pool, count)
         for defn in selected:
-            self._active.append(
-                _ActiveChallenge(
-                    id=defn.get("id", "unknown"),
-                    description=defn.get("description", ""),
-                    criteria_type=defn.get("criteria_type", ""),
-                    target=int(defn.get("target", 1)),
-                    zone_filter=defn.get("zone_filter"),
-                    reward_xp=int(defn.get("reward_xp", 0)),
-                    reward_money=int(defn.get("reward_money", 0)),
+            try:
+                self._active.append(
+                    _ActiveChallenge(
+                        id=defn["id"],
+                        description=defn.get("description", ""),
+                        criteria_type=defn["criteria_type"],
+                        target=int(defn["target"]),
+                        zone_filter=defn.get("zone_filter"),
+                        reward_xp=int(defn.get("reward_xp", 0)),
+                        reward_money=int(defn.get("reward_money", 0)),
+                        reward_item_id=defn.get("reward_item_id"),
+                    )
                 )
-            )
+            except KeyError as exc:
+                _log.warning(
+                    "[ChallengeSystem] Skipping malformed challenge entry "
+                    "(missing required field %s): %r",
+                    exc,
+                    defn,
+                )
 
     # ------------------------------------------------------------------
     # Event handlers
@@ -177,9 +193,8 @@ class ChallengeSystem:
         for ch in self._active:
             if ch.completed:
                 continue
-            old_progress = ch.progress
             ch.progress = self._compute_progress(ch)
-            if ch.progress >= ch.target and not ch.completed:
+            if ch.progress >= ch.target:
                 ch.completed = True
                 ch.progress = ch.target
                 self._event_bus.emit(
@@ -187,6 +202,7 @@ class ChallengeSystem:
                     challenge_id=ch.id,
                     reward_xp=ch.reward_xp,
                     reward_money=ch.reward_money,
+                    reward_item_id=ch.reward_item_id,
                 )
 
     def _compute_progress(self, ch: _ActiveChallenge) -> int:
@@ -206,8 +222,24 @@ class ChallengeSystem:
         if ct == "zone_entered":
             return len(self.zones_visited)
 
-        # Unsupported types return 0
-        return 0
+        if ct == "reach_location":
+            if ch.zone_filter:
+                target_key = ch.zone_filter.lower()
+                for visited_name in self.zones_visited:
+                    if visited_name.lower().replace(" ", "_") == target_key:
+                        return 1
+            return 0
+
+        # Unknown criteria type — warn once per distinct type and skip
+        _log.warning(
+            "[ChallengeSystem] Unknown criteria_type %r for challenge %r; "
+            "challenge will never complete.",
+            ct,
+            ch.id,
+        )
+        # Return current progress unchanged so the challenge stays incomplete
+        # without being re-warned on every event.
+        return ch.progress
 
     # ------------------------------------------------------------------
     # Public API
@@ -221,9 +253,18 @@ class ChallengeSystem:
                 progress=min(ch.progress, ch.target),
                 target=ch.target,
                 completed=ch.completed,
+                zone=(
+                    ch.zone_filter.replace("_", " ").title()
+                    if ch.zone_filter
+                    else ""
+                ),
             )
             for ch in self._active
         ]
+
+    def get_completed_challenges(self) -> List[_ActiveChallenge]:
+        """Return all challenges that have been completed this round."""
+        return [ch for ch in self._active if ch.completed]
 
     def get_active_raw(self) -> List[_ActiveChallenge]:
         """Return the raw internal challenge objects (for testing)."""
