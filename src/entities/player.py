@@ -10,7 +10,7 @@ from src.constants import (
     WALK_SPEED, SPRINT_SPEED, CROUCH_SPEED,
     JUMP_VEL, SLIDE_VEL, SLIDE_DURATION,
     NORMAL_HEIGHT, CROUCH_HEIGHT,
-    KEY_BINDINGS,
+    KEY_BINDINGS, PLAYER_MAX_HEALTH,
 )
 from src.entities.entity import Entity
 
@@ -28,6 +28,8 @@ class MovementState(Enum):
     SLIDING     = auto()
     JUMPING     = auto()
     FALLING     = auto()
+    SHOOT       = auto()
+    DEAD        = auto()
 
 
 # Map MovementState -> animation key and FPS
@@ -40,6 +42,8 @@ _STATE_ANIM: dict[MovementState, tuple[str, int]] = {
     MovementState.SLIDING:     ("slide",       12),
     MovementState.JUMPING:     ("jump",        4),
     MovementState.FALLING:     ("fall",        4),
+    MovementState.SHOOT:       ("shoot",       8),
+    MovementState.DEAD:        ("dead",        4),
 }
 
 _FOOTSTEP_INTERVAL_WALK   = 0.30
@@ -70,7 +74,7 @@ class Player(Entity):
         y: float = 0.0,
         event_bus=None,
         *,
-        max_health: int = 100,
+        max_health: int = PLAYER_MAX_HEALTH,
         buff_system: "BuffSystem | None" = None,
         inventory: "Inventory | None" = None,
         width: int = 28,
@@ -128,8 +132,9 @@ class Player(Entity):
             except Exception:
                 self.inventory = []
 
-        # Shooting
+        # Shooting / interaction
         self._shoot_pressed: bool = False
+        self._interact_intent: bool = False
 
         # Animation controller (optional -- falls back to solid-colour)
         self.animation_controller = None
@@ -213,6 +218,13 @@ class Player(Entity):
     # ------------------------------------------------------------------
 
     def handle_input(self, keys, events: List[pygame.event.Event]) -> None:
+        # Dead players cannot issue any input.
+        if not self.alive:
+            return
+
+        # Update shoot intent from mouse state every input frame.
+        self._shoot_pressed = bool(pygame.mouse.get_pressed()[0])
+
         bindings = KEY_BINDINGS if KEY_BINDINGS else {
             "move_left": pygame.K_a, "move_right": pygame.K_d,
             "jump": pygame.K_SPACE, "crouch": pygame.K_LCTRL,
@@ -242,10 +254,12 @@ class Player(Entity):
 
         for event in events:
             if event.type == pygame.KEYDOWN:
-                jump_key  = bindings.get("jump",  pygame.K_SPACE)
-                slide_key = bindings.get("slide", pygame.K_c)
+                jump_key     = bindings.get("jump",     pygame.K_SPACE)
+                slide_key    = bindings.get("slide",    pygame.K_c)
+                interact_key = bindings.get("interact", pygame.K_e)
 
-                if event.key == jump_key and self.on_ground:
+                # Jump is only allowed on the ground and outside of a slide.
+                if event.key == jump_key and self.on_ground and self.slide_timer <= 0:
                     self._jump_intent = True
 
                 if (
@@ -255,6 +269,9 @@ class Player(Entity):
                     and self.slide_timer <= 0
                 ):
                     self._slide_intent = True
+
+                if event.key == interact_key:
+                    self._interact_intent = True
 
     # ------------------------------------------------------------------
     # Per-frame update (state machine + hitbox + animation)
@@ -278,10 +295,12 @@ class Player(Entity):
         elif not wants_crouch and currently_crouched:
             self.uncrouch(tile_map)
 
-        # --- Apply jump intent ---
-        if self._jump_intent and self.on_ground:
+        # --- Apply jump intent (guard: must be on ground and not sliding) ---
+        if self._jump_intent and self.on_ground and self.slide_timer <= 0:
             self.vy = JUMP_VEL
             self.on_ground = False
+            self._jump_intent = False
+        else:
             self._jump_intent = False
 
         # --- Apply slide intent ---
@@ -293,6 +312,12 @@ class Player(Entity):
             self._slide_intent = False
             if self._event_bus is not None:
                 self._event_bus.emit("player_slide")
+
+        # --- Emit interact event and clear flag ---
+        if self._interact_intent:
+            if self._event_bus is not None:
+                self._event_bus.emit("interact")
+            self._interact_intent = False
 
         # --- Emit player_landed on rising edge of on_ground ---
         if self.on_ground and not self._on_ground_last_frame:
@@ -326,11 +351,17 @@ class Player(Entity):
             self.animation_controller.update(dt)
 
     def _resolve_state(self) -> MovementState:
+        # Highest priority: death overrides every other state.
+        if not self.alive:
+            return MovementState.DEAD
         if self.slide_timer > 0:
             return MovementState.SLIDING
         crouched = self.rect.height == CROUCH_HEIGHT
         if not self.on_ground:
             return MovementState.JUMPING if self.vy < 0 else MovementState.FALLING
+        # Shooting takes priority over idle/walk/sprint but not over slide/air.
+        if self._shoot_pressed:
+            return MovementState.SHOOT
         if crouched:
             return MovementState.CROUCH_WALK if abs(self.vx) > 1 else MovementState.CROUCHING
         if abs(self.vx) < 1:

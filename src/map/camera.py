@@ -1,8 +1,12 @@
-import pygame
+from __future__ import annotations
+
 from typing import Tuple
 
+import pygame
+
+
 class Camera:
-    def __init__(self, screen_w: int, screen_h: int, map_w: int, map_h: int):
+    def __init__(self, screen_w: int, screen_h: int, map_w: int, map_h: int) -> None:
         self.screen_w: int = screen_w
         self.screen_h: int = screen_h
         self.map_w: int = map_w
@@ -23,8 +27,12 @@ class Camera:
         self._clamp()
 
     def _clamp(self) -> None:
-        self.offset_x = max(0.0, min(self.offset_x, float(self.map_w - self.screen_w)))
-        self.offset_y = max(0.0, min(self.offset_y, float(self.map_h - self.screen_h)))
+        # max(0, ...) on the upper bound handles maps narrower/shorter than the
+        # viewport without producing a negative clamp range.
+        max_x = max(0.0, float(self.map_w - self.screen_w))
+        max_y = max(0.0, float(self.map_h - self.screen_h))
+        self.offset_x = max(0.0, min(self.offset_x, max_x))
+        self.offset_y = max(0.0, min(self.offset_y, max_y))
 
     def clamp(self, map_w: int, map_h: int) -> None:
         self.map_w = map_w

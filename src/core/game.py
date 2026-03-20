@@ -50,6 +50,11 @@ class GameApp:
 
         self.clock: pygame.time.Clock = pygame.time.Clock()
 
+        # ── Propagate user key bindings to the module-level KEY_BINDINGS dict ──
+        # Any module that does ``from src import constants as C`` and reads
+        # ``C.KEY_BINDINGS[action]`` will now see the user's saved bindings.
+        C.KEY_BINDINGS.update(self.settings.key_bindings)
+
         # ── Shared services (owned here, passed into scenes by reference) ─────
         self.bus:    EventBus    = EventBus()
         self.assets: AssetManager = AssetManager()
@@ -158,7 +163,21 @@ class GameApp:
         importing concrete scene classes directly.  This handler is the single
         place that knows the scene graph topology.
 
-        Full routing will be wired up as each scene is implemented.
+        Currently handled names
+        -----------------------
+        ``"quit"``
+            Signals that the application should exit cleanly.  Sets
+            ``_running = False`` so the main loop terminates after the current
+            frame completes.
+
+        All other names emit a stderr warning and are otherwise ignored.
+        Full routing for each destination scene is wired here as each scene
+        is implemented (e.g. ``"home_base"``, ``"game"``, ``"post_round"``).
         """
-        # Stub — full routing added when individual scenes are implemented.
-        pass
+        if scene == "quit":
+            self._running = False
+        else:
+            print(
+                f"[Runners] Unknown scene_request: {scene!r}",
+                file=sys.stderr,
+            )

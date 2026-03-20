@@ -17,6 +17,7 @@ class Zone:
         spawn_points:  List of (x, y) positions.
         music_track:   Path to the OGG file to loop, or None.
         enemy_spawns:  List of {"type": str, "pos": [x, y]} dicts.
+        color:         RGB tint used on the mini-map and tactical overlay.
     """
 
     name: str
@@ -24,6 +25,7 @@ class Zone:
     spawn_points: Optional[List[Tuple[float, float]]] = field(default_factory=list)
     music_track: Optional[str] = None
     enemy_spawns: Optional[List[dict]] = field(default_factory=list)
+    color: Tuple[int, int, int] = (60, 120, 180)
 
     def __post_init__(self) -> None:
         if self.spawn_points is None:

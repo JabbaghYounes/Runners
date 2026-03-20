@@ -1,13 +1,25 @@
 """
 Unit tests for Inventory — src/inventory/inventory.py
 
+# Run: pytest tests/test_inventory.py
+
 Covers:
-  - add()  : slot-cap enforcement, weight-cap enforcement, return value
-  - remove(): slot freed to None, return value, non-existent item
-  - drop()  : returns item, removes from slots, raises on non-existent
-  - equip() : weapon, armor; type guard; item-not-in-inventory guard
-  - unequip(): clears ref, item stays in slots, bad category raises
-  - Properties: is_full, total_weight, used_slots, equipped_weapon, equipped_armor
+  - add()          : slot-cap enforcement, weight-cap enforcement, return value
+  - add_item()     : returns slot index on success, None on failure
+  - remove()       : slot freed to None, return value, non-existent item
+  - remove_item()  : by slot index; clears linked quick-slot
+  - drop()         : returns item, removes from slots, raises on non-existent
+  - equip()        : weapon, armor; type guard; item-not-in-inventory guard
+  - unequip()      : clears ref, item stays in slots, bad category raises
+  - Properties     : is_full, total_weight, used_slots, equipped_weapon, equipped_armor
+  - Quick-slots    : assign_quick_slot, quick_slot_item
+  - use_consumable : heals player, removes item, returns False on non-consumable
+  - clear()        : removes all items and quick-slot refs
+  - expand_capacity: grows slot count
+  - get_items()    : non-None items
+  - get_consumables: consumables only
+  - Serialisation  : to_save_list / from_save_list round-trip
+  - Collections    : __len__, __iter__, __contains__
 """
 import pytest
 
@@ -475,3 +487,426 @@ class TestDefaultEquippedState:
     def test_equipped_armor_is_none_by_default(self):
         inv = Inventory(max_slots=5, max_weight=30.0)
         assert inv.equipped_armor is None
+
+
+# ---------------------------------------------------------------------------
+# add_item() — returns slot index
+# ---------------------------------------------------------------------------
+
+class TestAddItem:
+    def test_add_item_returns_integer_slot_index(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        idx = inv.add_item(_weapon())
+        assert isinstance(idx, int)
+
+    def test_add_item_first_item_lands_in_slot_0(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        idx = inv.add_item(_weapon())
+        assert idx == 0
+
+    def test_add_item_second_item_lands_in_slot_1(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        inv.add_item(_weapon("w1"))
+        idx = inv.add_item(_weapon("w2"))
+        assert idx == 1
+
+    def test_add_item_returns_none_when_slots_full(self):
+        inv = Inventory(max_slots=1, max_weight=100.0)
+        inv.add_item(_weapon("w1"))
+        idx = inv.add_item(_weapon("w2"))
+        assert idx is None
+
+    def test_add_item_returns_none_when_weight_exceeded(self):
+        inv = Inventory(max_slots=10, max_weight=1.0)
+        inv.add_item(_weapon("w1", weight=1.0))
+        idx = inv.add_item(_weapon("w2", weight=0.5))
+        assert idx is None
+
+    def test_item_at_returned_index_is_the_added_item(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        item = _weapon()
+        idx = inv.add_item(item)
+        assert inv.item_at(idx) is item
+
+
+# ---------------------------------------------------------------------------
+# remove_item() — by slot index
+# ---------------------------------------------------------------------------
+
+class TestRemoveItem:
+    def test_remove_item_returns_the_item(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        item = _weapon()
+        idx = inv.add_item(item)
+        returned = inv.remove_item(idx)
+        assert returned is item
+
+    def test_remove_item_clears_the_slot(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        item = _weapon()
+        idx = inv.add_item(item)
+        inv.remove_item(idx)
+        assert inv.item_at(idx) is None
+
+    def test_remove_item_by_out_of_range_index_returns_none(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        assert inv.remove_item(99) is None
+
+    def test_remove_item_clears_linked_quick_slot(self):
+        """When an inventory slot that is assigned to a quick-slot is removed,
+        the quick-slot reference must also be cleared."""
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        item = _consumable()
+        idx = inv.add_item(item)
+        inv.assign_quick_slot(idx, 0)       # quick-slot 0 → inv slot idx
+        inv.remove_item(idx)
+        assert inv.quick_slots[0] is None
+
+    def test_remove_item_does_not_affect_other_slots(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        w1 = _weapon("w1")
+        w2 = _weapon("w2")
+        inv.add_item(w1)
+        idx2 = inv.add_item(w2)
+        inv.remove_item(0)
+        assert inv.item_at(idx2) is w2
+
+
+# ---------------------------------------------------------------------------
+# Quick-slot management: assign_quick_slot / quick_slot_item
+# ---------------------------------------------------------------------------
+
+class TestQuickSlots:
+    def test_quick_slot_item_returns_none_when_unassigned(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        assert inv.quick_slot_item(0) is None
+
+    def test_quick_slot_item_returns_item_after_assignment(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        item = _consumable()
+        inv.add_item(item)
+        inv.assign_quick_slot(0, 0)
+        assert inv.quick_slot_item(0) is item
+
+    def test_assign_quick_slot_out_of_range_does_nothing(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        inv.add_item(_consumable())
+        inv.assign_quick_slot(0, 99)        # qs_idx 99 is invalid
+        assert all(qs is None for qs in inv.quick_slots)
+
+    def test_four_independent_quick_slots(self):
+        inv = Inventory(max_slots=24, max_weight=30.0)
+        items = [_consumable(f"c{i}", weight=0.2) for i in range(4)]
+        for item in items:
+            inv.add_item(item)
+        for qs in range(4):
+            inv.assign_quick_slot(qs, qs)
+        for qs in range(4):
+            assert inv.quick_slot_item(qs) is items[qs]
+
+    def test_reassigning_quick_slot_replaces_previous_assignment(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        c1 = _consumable("c1")
+        c2 = _consumable("c2")
+        inv.add_item(c1)   # slot 0
+        inv.add_item(c2)   # slot 1
+        inv.assign_quick_slot(0, 0)
+        inv.assign_quick_slot(1, 0)    # reassign quick-slot 0 to slot 1
+        assert inv.quick_slot_item(0) is c2
+
+    def test_quick_slot_item_out_of_range_returns_none(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        assert inv.quick_slot_item(-1) is None
+        assert inv.quick_slot_item(4) is None
+
+
+# ---------------------------------------------------------------------------
+# use_consumable()
+# ---------------------------------------------------------------------------
+
+class TestUseConsumable:
+    """Consumable use integrates with a stub Player that exposes heal()."""
+
+    class _StubPlayer:
+        def __init__(self):
+            self.health = 50
+            self.max_health = 100
+
+        def heal(self, amount: int) -> int:
+            gained = min(amount, self.max_health - self.health)
+            self.health += gained
+            return gained
+
+    def test_use_consumable_returns_true_on_success(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        from src.inventory.item import Consumable as C
+        c = C(id="kit", name="Kit", rarity="common", weight=0.5, base_value=50,
+              consumable_type="heal", heal_amount=30, stats={}, sprite_path="")
+        inv.add_item(c)
+        inv.assign_quick_slot(0, 0)
+        assert inv.use_consumable(0, self._StubPlayer()) is True
+
+    def test_use_consumable_heals_player(self):
+        from src.inventory.item import Consumable as C
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        c = C(id="kit", name="Kit", rarity="common", weight=0.5, base_value=50,
+              consumable_type="heal", heal_amount=30, stats={}, sprite_path="")
+        inv.add_item(c)
+        inv.assign_quick_slot(0, 0)
+        player = self._StubPlayer()
+        inv.use_consumable(0, player)
+        assert player.health == 80
+
+    def test_use_consumable_removes_item_after_use(self):
+        from src.inventory.item import Consumable as C
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        c = C(id="kit", name="Kit", rarity="common", weight=0.5, base_value=50,
+              consumable_type="heal", heal_amount=30, stats={}, sprite_path="")
+        inv.add_item(c)
+        inv.assign_quick_slot(0, 0)
+        inv.use_consumable(0, self._StubPlayer())
+        assert c not in inv.slots
+
+    def test_use_consumable_returns_false_when_quick_slot_empty(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        assert inv.use_consumable(0, self._StubPlayer()) is False
+
+    def test_use_consumable_returns_false_for_non_consumable_item(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        w = _weapon()
+        inv.add_item(w)
+        inv.assign_quick_slot(0, 0)
+        assert inv.use_consumable(0, self._StubPlayer()) is False
+
+
+# ---------------------------------------------------------------------------
+# clear()
+# ---------------------------------------------------------------------------
+
+class TestClear:
+    def test_clear_removes_all_items(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        inv.add(_weapon("w1"))
+        inv.add(_weapon("w2"))
+        inv.clear()
+        assert inv.used_slots == 0
+
+    def test_clear_resets_quick_slots(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        inv.add_item(_consumable())
+        inv.assign_quick_slot(0, 0)
+        inv.clear()
+        assert all(qs is None for qs in inv.quick_slots)
+
+    def test_clear_resets_equipped_weapon(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        w = _weapon()
+        inv.add(w)
+        inv.equip(w)
+        inv.clear()
+        assert inv.equipped_weapon is None
+
+    def test_clear_resets_equipped_armor(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        a = _armor()
+        inv.add(a)
+        inv.equip(a)
+        inv.clear()
+        assert inv.equipped_armor is None
+
+    def test_clear_allows_re_adding_items(self):
+        inv = Inventory(max_slots=2, max_weight=100.0)
+        inv.add(_weapon("w1"))
+        inv.add(_weapon("w2"))
+        inv.clear()
+        assert inv.add(_weapon("w3")) is True
+        assert inv.add(_weapon("w4")) is True
+
+
+# ---------------------------------------------------------------------------
+# expand_capacity()
+# ---------------------------------------------------------------------------
+
+class TestExpandCapacity:
+    def test_expand_capacity_increases_capacity(self):
+        inv = Inventory(max_slots=24, max_weight=100.0)
+        inv.expand_capacity(4)
+        assert inv.capacity == 28
+
+    def test_expanded_slots_can_hold_items(self):
+        inv = Inventory(max_slots=2, max_weight=100.0)
+        inv.add(_weapon("w1"))
+        inv.add(_weapon("w2"))
+        inv.expand_capacity(2)
+        assert inv.add(_weapon("w3")) is True
+
+    def test_expand_by_zero_does_not_change_capacity(self):
+        inv = Inventory(max_slots=24, max_weight=100.0)
+        inv.expand_capacity(0)
+        assert inv.capacity == 24
+
+    def test_expand_preserves_existing_items(self):
+        inv = Inventory(max_slots=3, max_weight=100.0)
+        w = _weapon()
+        inv.add(w)
+        inv.expand_capacity(5)
+        assert w in inv.slots
+
+
+# ---------------------------------------------------------------------------
+# get_items() and get_consumables()
+# ---------------------------------------------------------------------------
+
+class TestGetItems:
+    def test_get_items_returns_empty_list_when_inventory_empty(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        assert inv.get_items() == []
+
+    def test_get_items_returns_all_added_items(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        w = _weapon()
+        a = _armor()
+        inv.add(w)
+        inv.add(a)
+        items = inv.get_items()
+        assert w in items
+        assert a in items
+
+    def test_get_items_excludes_none_slots(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        inv.add(_weapon())
+        items = inv.get_items()
+        assert None not in items
+
+    def test_get_consumables_returns_only_consumables(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        w = _weapon()
+        c = _consumable()
+        inv.add(w)
+        inv.add(c)
+        consumables = inv.get_consumables()
+        assert c in consumables
+        assert w not in consumables
+
+    def test_get_consumables_returns_empty_list_when_none_present(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        inv.add(_weapon())
+        assert inv.get_consumables() == []
+
+
+# ---------------------------------------------------------------------------
+# Serialisation: to_save_list / from_save_list
+# ---------------------------------------------------------------------------
+
+class TestSerialisation:
+    def test_to_save_list_returns_list_of_dicts(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        inv.add(_weapon())
+        result = inv.to_save_list()
+        assert isinstance(result, list)
+        assert all(isinstance(d, dict) for d in result)
+
+    def test_to_save_list_empty_inventory_returns_empty_list(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        assert inv.to_save_list() == []
+
+    def test_to_save_list_includes_item_id(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        inv.add(_weapon(id="my_pistol"))
+        saved = inv.to_save_list()
+        assert saved[0]["item_id"] == "my_pistol"
+
+    def test_to_save_list_includes_item_type(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        inv.add(_weapon())
+        saved = inv.to_save_list()
+        assert saved[0]["item_type"] == "weapon"
+
+    def test_from_save_list_restores_correct_number_of_items(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        inv.add(_weapon("w1"))
+        inv.add(_armor("a1"))
+        saved = inv.to_save_list()
+
+        inv2 = Inventory(max_slots=5, max_weight=30.0)
+        inv2.from_save_list(saved)
+        assert inv2.used_slots == 2
+
+    def test_from_save_list_restores_item_id(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        inv.add(_weapon(id="pistol_01"))
+        saved = inv.to_save_list()
+
+        inv2 = Inventory(max_slots=5, max_weight=30.0)
+        inv2.from_save_list(saved)
+        ids = [item.item_id for item in inv2.get_items()]
+        assert "pistol_01" in ids
+
+    def test_from_save_list_clears_existing_items_first(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        inv.add(_weapon("old"))
+        inv.from_save_list([])      # empty list → should clear all
+        assert inv.used_slots == 0
+
+    def test_round_trip_preserves_item_count(self):
+        inv = Inventory(max_slots=24, max_weight=50.0)
+        for i in range(5):
+            inv.add(_weapon(f"w{i}", weight=0.5))
+        saved = inv.to_save_list()
+
+        inv2 = Inventory(max_slots=24, max_weight=50.0)
+        inv2.from_save_list(saved)
+        assert inv2.used_slots == 5
+
+
+# ---------------------------------------------------------------------------
+# Collection protocols: __len__, __iter__, __contains__
+# ---------------------------------------------------------------------------
+
+class TestCollectionProtocols:
+    def test_len_of_empty_inventory_is_zero(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        assert len(inv) == 0
+
+    def test_len_increases_with_added_items(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        inv.add(_weapon("w1"))
+        inv.add(_armor("a1"))
+        assert len(inv) == 2
+
+    def test_len_decreases_after_remove(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        item = _weapon()
+        inv.add(item)
+        inv.remove(item)
+        assert len(inv) == 0
+
+    def test_iter_yields_only_non_none_items(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        w = _weapon()
+        inv.add(w)
+        items = list(inv)
+        assert w in items
+        assert None not in items
+
+    def test_iter_empty_inventory_yields_nothing(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        assert list(inv) == []
+
+    def test_contains_returns_true_for_added_item(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        w = _weapon()
+        inv.add(w)
+        assert w in inv
+
+    def test_contains_returns_false_for_absent_item(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        w = _weapon()
+        assert w not in inv
+
+    def test_contains_returns_false_after_remove(self):
+        inv = Inventory(max_slots=5, max_weight=30.0)
+        w = _weapon()
+        inv.add(w)
+        inv.remove(w)
+        assert w not in inv

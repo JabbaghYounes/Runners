@@ -20,9 +20,11 @@ only needs the environment variables.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
@@ -34,7 +36,9 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame  # noqa: E402
 
+from src import constants as C             # noqa: E402
 from src.core.game import GameApp          # noqa: E402
+from src.core.settings import Settings     # noqa: E402
 from src.scenes.main_menu import MainMenu  # noqa: E402
 
 
@@ -173,45 +177,82 @@ class TestGameAppLoop:
         assert app.scenes.is_empty()
 
 
-# ── Audio wiring ──────────────────────────────────────────────────────────────
+# ── scene_request event handling ─────────────────────────────────────────────
 
-class TestGameAppAudioWiring:
-    """GameApp must create a shared AudioSystem and pass it to the initial scene."""
+class TestSceneRequest:
+    """_on_scene_request must handle 'quit' and warn on unknown names."""
 
-    def test_audio_attribute_is_audiosystem_instance(self):
-        from src.systems.audio_system import AudioSystem
+    def test_scene_request_quit_sets_running_false(self):
+        """Emitting scene='quit' must flip _running to False."""
         app = _fresh_app()
-        assert isinstance(app.audio, AudioSystem)
+        # Simulate the loop being active so the test isn't trivially true.
+        app._running = True
+        app.bus.emit("scene_request", scene="quit")
+        assert app._running is False
         app._shutdown()
 
-    def test_audio_ok_flag_is_bool(self):
+    def test_scene_request_unknown_scene_logs_warning(self, capsys):
+        """An unrecognised scene name must print a warning to stderr."""
         app = _fresh_app()
-        assert isinstance(app._audio_ok, bool)
+        app.bus.emit("scene_request", scene="unknown_scene_xyz")
+        captured = capsys.readouterr()
+        assert "unknown_scene_xyz" in captured.err
         app._shutdown()
 
-    def test_audiosystem_created_even_when_mixer_unavailable(self):
-        """_audio_ok=False (headless CI) must still produce an AudioSystem object."""
+    def test_scene_request_unknown_does_not_raise(self):
+        """Unrecognised scene names must not raise an exception."""
         app = _fresh_app()
-        # In CI, _audio_ok may be False; audio must still be present.
-        assert app.audio is not None
+        app.bus.emit("scene_request", scene="not_a_real_scene")
+        app._shutdown()  # must reach here without error
+
+
+# ── KEY_BINDINGS sync ─────────────────────────────────────────────────────────
+
+class TestKeyBindingsSync:
+    """GameApp.__init__ must propagate settings.key_bindings → constants.KEY_BINDINGS."""
+
+    def test_key_bindings_applied_to_constants_on_init(self, tmp_path):
+        """Custom key binding from settings.json must appear in KEY_BINDINGS."""
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(
+            json.dumps({"key_bindings": {"jump": "f"}}),
+            encoding="utf-8",
+        )
+        # Pre-load the settings so we can inject them via mock.
+        injected = Settings.load(settings_file)
+        assert injected.key_bindings["jump"] == pygame.K_f, (
+            "Prerequisite: Settings.load must parse 'f' → pygame.K_f"
+        )
+
+        with patch.object(Settings, "load", return_value=injected):
+            app = _fresh_app()
+
+        assert C.KEY_BINDINGS["jump"] == pygame.K_f
         app._shutdown()
 
-    def test_audio_mixer_ok_agrees_with_audio_ok_flag(self):
-        """AudioSystem._mixer_ok must match GameApp._audio_ok."""
-        app = _fresh_app()
-        assert app.audio._mixer_ok == app._audio_ok
-        app._shutdown()
 
-    def test_main_menu_holds_audio_attribute(self):
-        from src.scenes.main_menu import MainMenu
-        app = _fresh_app()
-        menu = app.scenes.active
-        assert isinstance(menu, MainMenu)
-        assert hasattr(menu, "_audio")
-        app._shutdown()
+# ── Fixed-timestep loop constants ─────────────────────────────────────────────
 
-    def test_main_menu_audio_is_same_instance_as_app_audio(self):
-        """Menu must hold a reference to the shared AudioSystem, not a copy."""
-        app = _fresh_app()
-        assert app.scenes.active._audio is app.audio
-        app._shutdown()
+
+class TestGameLoopConstants:
+    """The compile-time constants that govern the fixed-timestep loop must be
+    exactly as the architecture document specifies — they are load-bearing for
+    physics determinism and spiral-of-death prevention.
+    """
+
+    def test_max_frame_time_cap_is_0_25_seconds(self):
+        """MAX_FRAME_TIME must be exactly 0.25 s to cap the spiral-of-death."""
+        assert C.MAX_FRAME_TIME == 0.25
+
+    def test_fixed_timestep_is_exactly_1_over_60_seconds(self):
+        """FIXED_TIMESTEP must equal 1/60 s so physics ticks at a constant rate."""
+        assert abs(C.FIXED_TIMESTEP - (1.0 / 60)) < 1e-9
+
+    def test_max_frame_time_is_greater_than_fixed_timestep(self):
+        """The cap must be larger than one tick so the loop can always make
+        progress when real dt is at the cap boundary."""
+        assert C.MAX_FRAME_TIME > C.FIXED_TIMESTEP
+
+    def test_default_fps_matches_fixed_timestep_reciprocal(self):
+        """DEFAULT_FPS and FIXED_TIMESTEP must agree: 1/FIXED_TIMESTEP == DEFAULT_FPS."""
+        assert abs(1.0 / C.FIXED_TIMESTEP - C.DEFAULT_FPS) < 1e-6

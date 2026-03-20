@@ -53,7 +53,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.core.constants import ROUND_DURATION_SECS
+from src.core.constants import ROUND_DURATION_SECS, TIMER_WARN_SECS
 from src.core.event_bus import EventBus
 from src.systems.round_timer import RoundTimer
 
@@ -396,3 +396,76 @@ class TestReset:
         timer.start()
         timer.update(1.0)   # second expiry
         assert len(calls) == 2
+
+
+# ===========================================================================
+# round_warning event
+# ===========================================================================
+
+def collect_warnings(bus: EventBus) -> list[int]:
+    """Subscribe a collector to 'round_warning' and return the list it fills."""
+    warnings: list[int] = []
+    bus.subscribe("round_warning", lambda seconds_remaining: warnings.append(seconds_remaining))
+    return warnings
+
+
+class TestRoundWarning:
+    def test_warning_fires_when_threshold_is_crossed(self):
+        """update() that drops seconds_remaining to <= TIMER_WARN_SECS fires exactly
+        one 'round_warning' event."""
+        # Start slightly above the threshold so the first update crosses it.
+        timer, bus = make_timer(float(TIMER_WARN_SECS) + 5.0)
+        warnings = collect_warnings(bus)
+        timer.start()
+        timer.update(10.0)  # crosses TIMER_WARN_SECS
+        assert len(warnings) == 1
+
+    def test_warning_not_fired_above_threshold(self):
+        """Updates that leave seconds_remaining above TIMER_WARN_SECS produce no
+        'round_warning'."""
+        timer, bus = make_timer(float(TIMER_WARN_SECS) + 100.0)
+        warnings = collect_warnings(bus)
+        timer.start()
+        timer.update(1.0)   # still well above threshold
+        assert warnings == []
+
+    def test_warning_does_not_refire_on_subsequent_updates(self):
+        """Further update() calls after the threshold is first crossed must not
+        emit additional 'round_warning' events."""
+        timer, bus = make_timer(float(TIMER_WARN_SECS) + 5.0)
+        warnings = collect_warnings(bus)
+        timer.start()
+        timer.update(10.0)  # first crossing → one warning
+        timer.update(10.0)  # still below threshold
+        timer.update(10.0)
+        assert len(warnings) == 1
+
+    def test_warning_fires_on_large_dt_that_overshoots_threshold(self):
+        """A single dt that jumps from above the threshold all the way to 0 must
+        emit exactly one 'round_warning' and one 'round_end'."""
+        timer, bus = make_timer(float(TIMER_WARN_SECS) + 10.0)
+        warnings = collect_warnings(bus)
+        ends = count_round_ends(bus)
+        timer.start()
+        timer.update(float(TIMER_WARN_SECS) + 100.0)  # overshoots everything
+        assert len(warnings) == 1
+        assert len(ends) == 1
+
+    def test_warning_fires_again_after_reset(self):
+        """After reset() + start() the warning fires a second time when the
+        threshold is recrossed."""
+        timer, bus = make_timer(float(TIMER_WARN_SECS) + 5.0)
+        warnings = collect_warnings(bus)
+        timer.start()
+        timer.update(10.0)  # first crossing
+        timer.reset()
+        timer.start()
+        timer.update(10.0)  # second crossing
+        assert len(warnings) == 2
+
+    def test_warning_not_fired_without_start(self):
+        """update() without start() must never emit 'round_warning'."""
+        timer, bus = make_timer(float(TIMER_WARN_SECS) + 5.0)
+        warnings = collect_warnings(bus)
+        timer.update(float(TIMER_WARN_SECS) + 100.0)  # would cross if running
+        assert warnings == []
