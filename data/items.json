@@ -92,7 +92,8 @@
       "fire_rate": 0.7,
       "magazine": 5,
       "reload_time": 3.5,
-      "range": 900
+      "range": 900,
+      "projectile_speed": 900
     }
   },
   "smg_torrent": {

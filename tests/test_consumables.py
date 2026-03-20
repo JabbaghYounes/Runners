@@ -724,11 +724,11 @@ class TestPlayerDamage:
         assert player.health == 85
 
     def test_take_damage_armor_absorbs_all_damage(self, player: Player) -> None:
-        """Armor >= damage: effective damage is 0 and health is unchanged."""
+        """Armor >= damage: effective damage floors at 1 (spec: max(1, raw - armor))."""
         player.armor = 50
         result = player.take_damage(20)
-        assert result == 0
-        assert player.health == 100
+        assert result == 1
+        assert player.health == 99
 
     def test_take_damage_clamps_health_at_zero(self, player: Player) -> None:
         player.take_damage(999)

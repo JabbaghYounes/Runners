@@ -166,8 +166,13 @@ class Player(Entity):
         return gained
 
     def take_damage(self, amount: int) -> int:
-        """Apply damage after armor reduction. Returns effective HP lost."""
-        effective = max(0, amount - self.armor)
+        """Apply damage after armor reduction. Returns effective HP lost.
+
+        The damage floor is 1 when amount > 0, matching the spec:
+        ``effective = max(1, raw - armor)``.  A zero-damage call (amount=0)
+        is a no-op and returns 0 so that non-damaging hits stay inert.
+        """
+        effective = max(1, amount - self.armor) if amount > 0 else 0
         self.health = max(0, self.health - effective)
         if self.health == 0 and self.alive:
             self.alive = False

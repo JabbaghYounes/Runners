@@ -1,3 +1,4 @@
+# Run: pytest tests/test_player_stats.py
 """Tests for the Player entity: stats, health pool, armor, damage, healing,
 animation-state flags, and CharacterClass integration.
 
@@ -357,3 +358,98 @@ class TestPlayerRender:
     def test_render_with_camera_offset(self, player):
         surface = pygame.Surface((640, 480))
         player.render(surface, (100, 50))   # non-zero offset must not crash
+
+
+# ---------------------------------------------------------------------------
+# Damage floor spec: effective = max(1, raw − armor) when raw > 0
+# ---------------------------------------------------------------------------
+
+class TestDamageFloorSpec:
+    """Player.take_damage() enforces a minimum of 1 HP lost when amount > 0.
+
+    Spec: ``effective = max(1, raw − armor)`` — armor can never reduce damage
+    below 1.  A zero-damage call (amount=0) is a no-op and returns 0.
+    """
+
+    def test_damage_floor_is_one_when_armor_equals_raw_damage(self):
+        """armor == raw_damage → effective = max(1, 0) = 1, not 0."""
+        p = Player(x=0, y=0)
+        p.armor = 15
+        before = p.health
+
+        net = p.take_damage(15)
+
+        assert net == 1
+        assert p.health == before - 1
+
+    def test_damage_floor_is_one_when_armor_exceeds_raw_damage(self):
+        """armor > raw_damage → effective = max(1, negative) = 1."""
+        p = Player(x=0, y=0)
+        p.armor = 50
+
+        net = p.take_damage(10)
+
+        assert net == 1
+
+    def test_damage_floor_is_one_with_massive_armor(self):
+        """Extreme armor still delivers exactly 1 HP damage per hit."""
+        p = Player(x=0, y=0)
+        p.armor = 9999
+        before = p.health
+
+        net = p.take_damage(5)
+
+        assert net == 1
+        assert p.health == before - 1
+
+    def test_zero_damage_call_returns_zero(self):
+        """take_damage(0) is a no-op: returns 0 and leaves health unchanged."""
+        p = Player(x=0, y=0)
+        before = p.health
+
+        result = p.take_damage(0)
+
+        assert result == 0
+        assert p.health == before
+
+    def test_zero_damage_call_does_not_kill_player(self):
+        """take_damage(0) must never set alive=False."""
+        p = Player(x=0, y=0)
+        p.health = 1  # critically low
+
+        p.take_damage(0)
+
+        assert p.alive is True
+
+    def test_damage_above_armor_deals_reduced_amount(self):
+        """raw > armor → effective = raw − armor (still ≥ 1)."""
+        p = Player(x=0, y=0)
+        p.armor = 10
+        before = p.health
+
+        net = p.take_damage(30)
+
+        assert net == 20
+        assert p.health == before - 20
+
+    def test_damage_return_value_is_actual_hp_lost(self):
+        """Return value must equal the number of HP deducted."""
+        p = Player(x=0, y=0)
+        p.armor = 5
+        before = p.health
+
+        net = p.take_damage(20)   # effective = 15
+        after = p.health
+
+        assert net == before - after
+
+    def test_repeated_min_damage_accumulates(self):
+        """Multiple 1-damage hits each reduce health by exactly 1."""
+        p = Player(x=0, y=0)
+        p.armor = 9999
+        before = p.health
+
+        for _ in range(5):
+            p.take_damage(1)
+
+        assert p.health == before - 5
