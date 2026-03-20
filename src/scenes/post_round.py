@@ -115,7 +115,7 @@ class PostRound:
             summary.level_after = xp_system.level
 
         if save_manager:
-            save_manager.save()
+            save_manager.save(currency=currency, xp_system=xp_system)
 
         # Play outcome SFX
         if audio_system and summary:

@@ -267,6 +267,7 @@ class GameScene(BaseScene):
         self._loot_sys = None
         self._buff = None
         self._challenge = None
+        self._currency_system = None
         if not hasattr(self, '_audio_sys'):
             self._audio_sys = None
         self._shooting = None
