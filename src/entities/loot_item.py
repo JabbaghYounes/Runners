@@ -59,10 +59,11 @@ class LootItem:
         bob = int(math.sin(self._bob_timer * 3) * 3)
         sx = int(self.x) - ox
         sy = int(self.y) - oy + bob
-        pygame.draw.rect(screen, (255, 200, 50), (sx, sy, _SPRITE_SIZE, _SPRITE_SIZE))
+        # Outer rect: rarity-colored border so players can read item tier at a glance
+        pygame.draw.rect(screen, self.item.rarity_color, (sx, sy, _SPRITE_SIZE, _SPRITE_SIZE))
+        # Inner rect: dark neutral fill so the colored border stands out
         pygame.draw.rect(
             screen,
-            (255, 255, 100),
+            (30, 30, 40),
             (sx + 2, sy + 2, _SPRITE_SIZE - 4, _SPRITE_SIZE - 4),
-            1,
         )
