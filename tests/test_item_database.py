@@ -1,12 +1,17 @@
 """
 Unit tests for ItemDatabase singleton — src/inventory/item_database.py
 
+# Run: pytest tests/test_item_database.py
+
 Covers:
   - Singleton pattern  : get_instance() always returns the same object
   - load()             : parses items.json; idempotent on second call
   - create()           : returns correct subclass; populates fields; raises KeyError on unknown id
   - Instance isolation : cloned instances are independent (no shared mutation)
   - Helper queries     : get_all_by_type(), get_all_by_rarity()
+  - Introspection      : all_ids(), item_ids property, __len__, __contains__
+  - reload()           : reloads from disk, picks up fresh data
+  - JSON formats       : list format, {"items":[...]} wrapper format, dict-keyed format
 """
 import copy
 import json
