@@ -7,6 +7,7 @@
     "value": 80,
     "weight": 1.0,
     "sprite": "items/pistol_mk1",
+    "mod_slots": ["scope", "barrel"],
     "stats": {
       "damage": 18,
       "fire_rate": 3.0,
@@ -23,6 +24,7 @@
     "value": 120,
     "weight": 1.5,
     "sprite": "items/smg_rattler",
+    "mod_slots": ["barrel", "grip", "stock", "magazine"],
     "stats": {
       "damage": 12,
       "fire_rate": 8.0,
@@ -39,6 +41,7 @@
     "value": 250,
     "weight": 2.5,
     "sprite": "items/shotgun_brawler",
+    "mod_slots": ["barrel", "grip"],
     "stats": {
       "damage": 65,
       "fire_rate": 1.0,
@@ -55,6 +58,7 @@
     "value": 350,
     "weight": 3.0,
     "sprite": "items/rifle_vantage",
+    "mod_slots": ["scope", "barrel", "grip"],
     "stats": {
       "damage": 40,
       "fire_rate": 2.5,
@@ -71,6 +75,7 @@
     "value": 550,
     "weight": 3.2,
     "sprite": "items/rifle_pulse",
+    "mod_slots": ["scope", "barrel", "grip"],
     "stats": {
       "damage": 35,
       "fire_rate": 5.0,
@@ -87,6 +92,7 @@
     "value": 680,
     "weight": 4.0,
     "sprite": "items/sniper_herald",
+    "mod_slots": ["scope", "barrel", "stock"],
     "stats": {
       "damage": 120,
       "fire_rate": 0.7,
@@ -104,6 +110,7 @@
     "value": 1000,
     "weight": 1.8,
     "sprite": "items/smg_torrent",
+    "mod_slots": ["barrel", "grip", "stock", "magazine"],
     "stats": {
       "damage": 20,
       "fire_rate": 12.0,
@@ -120,6 +127,7 @@
     "value": 1400,
     "weight": 3.5,
     "sprite": "items/rifle_sovereign",
+    "mod_slots": ["scope", "barrel", "grip", "stock"],
     "stats": {
       "damage": 70,
       "fire_rate": 2.0,
@@ -136,6 +144,7 @@
     "value": 3500,
     "weight": 6.0,
     "sprite": "items/cannon_obliterator",
+    "mod_slots": ["barrel", "grip"],
     "stats": {
       "damage": 200,
       "fire_rate": 0.5,
@@ -315,70 +324,66 @@
     "id": "scope_red_dot",
     "name": "Red Dot Sight",
     "type": "attachment",
+    "slot_type": "scope",
     "rarity": "common",
     "value": 90,
     "weight": 0.2,
     "sprite": "items/scope_red_dot",
-    "stats": {
-      "accuracy_bonus": 10,
-      "compatible_types": ["weapon"]
-    }
+    "stat_delta": {"damage": 2},
+    "compatible_weapons": [],
+    "stats": {}
   },
   "scope_holo": {
     "id": "scope_holo",
     "name": "Holographic Scope",
     "type": "attachment",
+    "slot_type": "scope",
     "rarity": "uncommon",
     "value": 320,
     "weight": 0.3,
     "sprite": "items/scope_holo",
-    "stats": {
-      "accuracy_bonus": 20,
-      "zoom": 1.5,
-      "compatible_types": ["weapon"]
-    }
+    "stat_delta": {"damage": 3, "fire_rate": 0.5},
+    "compatible_weapons": [],
+    "stats": {}
   },
   "suppressor_mk1": {
     "id": "suppressor_mk1",
     "name": "Sound Suppressor",
     "type": "attachment",
+    "slot_type": "barrel",
     "rarity": "uncommon",
     "value": 380,
     "weight": 0.4,
     "sprite": "items/suppressor_mk1",
-    "stats": {
-      "noise_reduction": 60,
-      "damage_penalty": 5,
-      "compatible_types": ["weapon"]
-    }
+    "stat_delta": {"damage": -3, "fire_rate": 0.2},
+    "compatible_weapons": [],
+    "stats": {}
   },
   "grip_tactical": {
     "id": "grip_tactical",
     "name": "Tactical Foregrip",
     "type": "attachment",
+    "slot_type": "grip",
     "rarity": "rare",
     "value": 420,
     "weight": 0.2,
     "sprite": "items/grip_tactical",
-    "stats": {
-      "recoil_reduction": 25,
-      "compatible_types": ["weapon"]
-    }
+    "stat_delta": {"fire_rate": 0.5, "reload_time": -0.2},
+    "compatible_weapons": [],
+    "stats": {}
   },
   "scope_thermal": {
     "id": "scope_thermal",
     "name": "Thermal Scope",
     "type": "attachment",
+    "slot_type": "scope",
     "rarity": "epic",
     "value": 1100,
     "weight": 0.5,
     "sprite": "items/scope_thermal",
-    "stats": {
-      "accuracy_bonus": 35,
-      "zoom": 3.0,
-      "wall_detect": true,
-      "compatible_types": ["weapon"]
-    }
+    "stat_delta": {"damage": 8, "projectile_speed": 50},
+    "compatible_weapons": [],
+    "stats": {}
   },
   "medkit_small": {
     "id": "medkit_small",
@@ -486,6 +491,7 @@
     "value": 80,
     "weight": 1.0,
     "sprite": "items/weapon_pistol",
+    "mod_slots": ["scope", "barrel"],
     "stats": {
       "damage": 15,
       "fire_rate": 3.0,
@@ -502,6 +508,7 @@
     "value": 250,
     "weight": 3.0,
     "sprite": "items/weapon_rifle",
+    "mod_slots": ["scope", "barrel", "grip"],
     "stats": {
       "damage": 30,
       "fire_rate": 4.0,
@@ -518,6 +525,7 @@
     "value": 350,
     "weight": 4.0,
     "sprite": "items/weapon_sniper",
+    "mod_slots": ["scope", "barrel", "stock"],
     "stats": {
       "damage": 100,
       "fire_rate": 0.8,

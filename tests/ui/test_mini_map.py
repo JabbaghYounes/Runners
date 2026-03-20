@@ -227,6 +227,170 @@ class TestWorldToMiniNoState:
 # ---------------------------------------------------------------------------
 # Transform accuracy at fractional positions
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# tile_surf rendering — feature: mini-map reflects actual tile geometry
+# ---------------------------------------------------------------------------
+
+
+class TestMiniMapTileSurf:
+    """MiniMap.draw() must blit a scaled tile_surf when HUDState provides one."""
+
+    def test_draw_with_tile_surf_does_not_raise(self, mini_rect, map_rect):
+        """Providing a tile_surf in HUDState must not cause any exception."""
+        surface = pygame.Surface((1280, 720))
+        mm = MiniMap(mini_rect)
+        tile_surf = pygame.Surface((10, 8))
+        tile_surf.fill((35, 50, 70))
+        state = HUDState(
+            map_world_rect=map_rect,
+            player_world_pos=(640.0, 360.0),
+            tile_surf=tile_surf,
+        )
+        mm.update(state)
+        mm.draw(surface)  # must not raise
+
+    def test_draw_with_none_tile_surf_does_not_raise(self, mini_rect, map_rect):
+        """tile_surf=None must be silently ignored — no AttributeError."""
+        surface = pygame.Surface((1280, 720))
+        mm = MiniMap(mini_rect)
+        state = HUDState(
+            map_world_rect=map_rect,
+            player_world_pos=(640.0, 360.0),
+            tile_surf=None,
+        )
+        mm.update(state)
+        mm.draw(surface)
+
+    def test_draw_with_missing_tile_surf_attr_does_not_raise(self, mini_rect, map_rect):
+        """State object without tile_surf attr at all must be handled gracefully."""
+        surface = pygame.Surface((1280, 720))
+        mm = MiniMap(mini_rect)
+        # Build a state via HUDState (it has tile_surf=None by default)
+        state = HUDState(map_world_rect=map_rect, player_world_pos=(0.0, 0.0))
+        mm.update(state)
+        mm.draw(surface)
+
+    def test_tile_surf_pixels_appear_inside_minimap_rect(self, mini_rect, map_rect):
+        """After draw() with a non-black tile_surf, pixels inside the minimap
+        rect must differ from the black canvas."""
+        surface = pygame.Surface((1280, 720))
+        surface.fill((0, 0, 0))
+
+        mm = MiniMap(mini_rect)
+        # Use a distinctive colour that is clearly NOT black
+        tile_surf = pygame.Surface((10, 8))
+        tile_surf.fill((99, 88, 77))
+        state = HUDState(
+            map_world_rect=map_rect,
+            player_world_pos=(640.0, 360.0),
+            tile_surf=tile_surf,
+        )
+        mm.update(state)
+        mm.draw(surface)
+
+        found = False
+        for y in range(mini_rect.top, mini_rect.bottom, 2):
+            for x in range(mini_rect.left, mini_rect.right, 2):
+                if surface.get_at((x, y))[:3] != (0, 0, 0):
+                    found = True
+                    break
+            if found:
+                break
+        assert found, (
+            "Expected tile_surf pixels to appear inside the minimap rect "
+            f"{mini_rect}, but all sampled pixels were black."
+        )
+
+    def test_no_tile_surf_still_draws_dark_background(self, mini_rect, map_rect):
+        """When tile_surf is None the minimap must still paint its dark background."""
+        surface = pygame.Surface((1280, 720))
+        surface.fill((255, 255, 255))  # start pure white
+
+        mm = MiniMap(mini_rect)
+        state = HUDState(
+            map_world_rect=map_rect,
+            player_world_pos=(640.0, 360.0),
+            tile_surf=None,
+        )
+        mm.update(state)
+        mm.draw(surface)
+
+        # Centre of the minimap rect should be the dark background colour
+        cx, cy = mini_rect.centerx, mini_rect.centery
+        colour = surface.get_at((cx, cy))[:3]
+        # Dark background is (6, 10, 18) — definitely not white
+        assert colour != (255, 255, 255), (
+            "Dark background was not drawn when tile_surf is None"
+        )
+
+    def test_draw_tile_surf_then_zones_on_top_does_not_raise(
+        self, mini_rect, map_rect
+    ):
+        """Zone overlays must be composited on top of tile_surf without error."""
+        surface = pygame.Surface((1280, 720))
+        mm = MiniMap(mini_rect)
+        tile_surf = pygame.Surface((10, 8))
+        tile_surf.fill((6, 10, 18))
+        state = HUDState(
+            map_world_rect=map_rect,
+            player_world_pos=(320.0, 180.0),
+            tile_surf=tile_surf,
+            zones=[
+                ZoneInfo(
+                    name="Overlay",
+                    color=(80, 60, 120),
+                    world_rect=pygame.Rect(0, 0, 640, 720),
+                )
+            ],
+        )
+        mm.update(state)
+        mm.draw(surface)
+
+    def test_draw_tile_surf_with_extraction_dot_does_not_raise(
+        self, mini_rect, map_rect
+    ):
+        """Extraction dot must be drawn on top of tile_surf without error."""
+        surface = pygame.Surface((1280, 720))
+        mm = MiniMap(mini_rect)
+        tile_surf = pygame.Surface((10, 8))
+        tile_surf.fill((6, 10, 18))
+        state = HUDState(
+            map_world_rect=map_rect,
+            player_world_pos=(320.0, 180.0),
+            tile_surf=tile_surf,
+            extraction_pos=(960.0, 540.0),
+        )
+        mm.update(state)
+        mm.draw(surface)
+
+    def test_tile_surf_sized_like_real_map_baked_minimap(self, mini_rect, map_rect):
+        """A 100×30 tile surface (matching the real map) must scale correctly."""
+        surface = pygame.Surface((1280, 720))
+        surface.fill((0, 0, 0))
+
+        mm = MiniMap(mini_rect)
+        tile_surf = pygame.Surface((100, 30))
+        tile_surf.fill((35, 50, 70))   # all-solid colour
+
+        state = HUDState(
+            map_world_rect=pygame.Rect(0, 0, 3200, 960),
+            player_world_pos=(96.0, 832.0),
+            tile_surf=tile_surf,
+        )
+        mm.update(state)
+        mm.draw(surface)
+
+        # The minimap rect interior should be the solid colour (not black)
+        cx, cy = mini_rect.centerx, mini_rect.centery
+        colour = surface.get_at((cx, cy))[:3]
+        assert colour != (0, 0, 0), (
+            "Expected tile_surf (all dark-blue) to fill the minimap area"
+        )
+
+
+# ---------------------------------------------------------------------------
+
+
 class TestWorldToMiniAccuracy:
     def test_quarter_x_maps_to_quarter_minimap_width(self, mini_rect, map_rect):
         mm = MiniMap(mini_rect)
