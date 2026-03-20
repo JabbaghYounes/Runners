@@ -5,6 +5,7 @@ import pygame
 from enum import Enum, auto
 from typing import Tuple, List, Dict, Any, Optional
 from src.entities.entity import Entity
+from src.constants import Faction
 
 
 class AIState(Enum):
@@ -86,6 +87,9 @@ class RobotEnemy(Entity):
             patrol_waypoints if patrol_waypoints is not None
             else [(float(x), float(y))]
         )
+
+        # Faction tag (used by CombatSystem for damage routing)
+        self.faction: Faction = Faction.ENEMY
 
         # FSM state
         self.state: AIState = AIState.PATROL
