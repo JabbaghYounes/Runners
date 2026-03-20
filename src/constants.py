@@ -115,6 +115,8 @@ PICKUP_RADIUS = 48   # pixels — loot interaction distance
 
 # ── XP constants ──────────────────────────────────────────────────────────
 EXTRACTION_XP: int = 200
+XP_BASE: int = 900       # XP required to reach level 2 (base of the curve)
+XP_SCALE: float = 1.4    # Multiplicative scale per level for XP-to-next-level
 
 # ── Weapon defaults ──────────────────────────────────────────────────────
 PROJECTILE_SPEED   = 600.0   # px/s — default bullet speed

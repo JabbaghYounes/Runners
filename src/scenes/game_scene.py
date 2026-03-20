@@ -233,7 +233,7 @@ class GameScene(BaseScene):
         self._transitioning: bool = False
 
         # Subscribe events
-        self._event_bus.subscribe('enemy_killed', self._on_enemy_killed)
+        # NOTE: 'enemy_killed' XP is handled solely by XPSystem to avoid double-award.
         self._event_bus.subscribe('extraction_success', self._on_extract)
         self._event_bus.subscribe('extraction_failed', self._on_extract_failed)
         self._event_bus.subscribe('round_end', self._on_round_end)

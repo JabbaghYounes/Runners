@@ -4,8 +4,19 @@ from typing import Dict, Any
 
 
 class XPSystem:
-    BASE_XP = 900
-    SCALE = 1.4
+    """Tracks player XP and level, awards XP from game events.
+
+    Subscribes to:
+    - ``"enemy_killed"``      — awards ``xp_reward`` from the event payload
+    - ``"player_killed"``     — awards ``PVP_KILL_XP`` when killer is player-controlled
+    - ``"extraction_success"``— awards ``EXTRACTION_XP`` bonus
+    - ``"challenge_completed"``— awards ``reward_xp`` from the challenge payload
+
+    On level-up, emits:
+    - ``"level_up"``          (legacy, HUD subscribes)
+    - ``"level.up"``          (legacy alias)
+    - ``"player_leveled_up"`` (canonical name for external systems)
+    """
 
     def __init__(self, event_bus=None):
         self.xp: int = 0
@@ -18,6 +29,20 @@ class XPSystem:
             event_bus.subscribe("player_killed", self._on_player_killed)
             event_bus.subscribe("enemy_killed", self._on_enemy_killed)
             event_bus.subscribe("extraction_success", self._on_extraction_success)
+            event_bus.subscribe("challenge_completed", self._on_challenge_completed)
+
+    # ------------------------------------------------------------------
+    # Read-only property
+    # ------------------------------------------------------------------
+
+    @property
+    def pending_xp(self) -> int:
+        """XP accumulated this round, not yet committed (zeroed by commit())."""
+        return self._pending_xp
+
+    # ------------------------------------------------------------------
+    # Event handlers
+    # ------------------------------------------------------------------
 
     def _on_player_killed(self, **kwargs: Any) -> None:
         """Award PVP_KILL_XP when the killer is the human player."""
@@ -40,7 +65,19 @@ class XPSystem:
         from src.constants import EXTRACTION_XP
         self.award(EXTRACTION_XP)
 
+    def _on_challenge_completed(self, **kwargs: Any) -> None:
+        """Award XP when a vendor challenge is completed."""
+        reward_xp = kwargs.get("reward_xp", 0)
+        if reward_xp <= 0:
+            return
+        self.award(reward_xp)
+
+    # ------------------------------------------------------------------
+    # Core award / level logic
+    # ------------------------------------------------------------------
+
     def award(self, amount: int) -> None:
+        """Add *amount* XP, recalculate level, and emit level-up events if needed."""
         self._pending_xp += amount
         self.xp += amount
         old_level = self.level
@@ -58,7 +95,8 @@ class XPSystem:
             self.level += 1
 
     def xp_to_next_level(self) -> int:
-        return int(self.BASE_XP * (self.SCALE ** (self.level - 1)))
+        from src.constants import XP_BASE, XP_SCALE
+        return int(XP_BASE * (XP_SCALE ** (self.level - 1)))
 
     def spend_skill_point(self, amount: int = 1) -> bool:
         """Deduct *amount* skill points.
@@ -71,7 +109,12 @@ class XPSystem:
         return True
 
     def commit(self) -> None:
+        """Zero pending XP, finalising the round's awards without re-awarding."""
         self._pending_xp = 0
+
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
 
     def load(self, data: Dict[str, Any]) -> None:
         self.xp = data.get('xp', 0)
