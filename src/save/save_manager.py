@@ -152,7 +152,7 @@ class SaveManager:
 
         player = state.get("player", {})
         if currency is not None:
-            currency.balance = player.get("money", 0)
+            currency.balance = max(0, int(player.get("money", 0)))
         if xp_system is not None:
             xp_system.xp = player.get("xp", 0)
             xp_system.level = player.get("level", 1)

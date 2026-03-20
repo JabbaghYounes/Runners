@@ -103,11 +103,6 @@ class GameScene(BaseScene):
         w, h = self._settings.resolution_tuple
         self.camera: Camera = Camera(w, h, mr.w, mr.h)
 
-        # Player
-        sx, sy = self.tile_map.player_spawn
-        self.player: Player = Player(sx, sy)
-        self._player = self.player
-
         # Databases
         self._item_db = ItemDatabase.instance()
         if not self._item_db.item_ids:
@@ -120,10 +115,10 @@ class GameScene(BaseScene):
         if os.path.exists(enemies_path):
             self._enemy_db.load(enemies_path)
 
-        # Enemies
-        spawn_sys = SpawnSystem()
-        self.enemies: List[Any] = spawn_sys.spawn_all_zones(
-            self.tile_map.zones, self._enemy_db
+        # Spawn all entities via SpawnSystem (loot → enemies → bots → player)
+        self._spawn_sys = SpawnSystem(event_bus=self._event_bus)
+        _result = self._spawn_sys.spawn_round(
+            self.tile_map, self._enemy_db, self._item_db
         )
 
         # Loot
@@ -170,12 +165,13 @@ class GameScene(BaseScene):
         except Exception:
             self._challenge = None
 
-        # Audio system
-        try:
-            from src.systems.audio_system import AudioSystem
-            self._audio_sys = AudioSystem(self._event_bus, self._assets)
-        except Exception:
-            self._audio_sys = None
+        # Audio system — skip creation if an instance was already injected (e.g. tests)
+        if self._audio is None:
+            try:
+                from src.systems.audio_system import AudioSystem
+                self._audio = AudioSystem(self._event_bus, self._assets, self._settings)
+            except Exception:
+                pass
 
         # Extraction zone — stored separately for rendering.
         try:
@@ -237,7 +233,7 @@ class GameScene(BaseScene):
         self._transitioning: bool = False
 
         # Subscribe events
-        self._event_bus.subscribe('enemy_killed', self._on_enemy_killed)
+        # NOTE: 'enemy_killed' XP is handled solely by XPSystem to avoid double-award.
         self._event_bus.subscribe('extraction_success', self._on_extract)
         self._event_bus.subscribe('extraction_failed', self._on_extract_failed)
         self._event_bus.subscribe('round_end', self._on_round_end)
@@ -256,6 +252,7 @@ class GameScene(BaseScene):
         self._player = self.player
         self.player.alive = True
         self.enemies = []
+        self.pvp_bots = []
         self.loot_items = []
         self.projectiles = []
         self._zones = zones_override if zones_override is not None else self._default_zones()
@@ -270,8 +267,10 @@ class GameScene(BaseScene):
         self._loot_sys = None
         self._buff = None
         self._challenge = None
+        self._currency_system = None
         if not hasattr(self, '_audio_sys'):
             self._audio_sys = None
+        self._shooting = None
 
         self._round_timer = None
 
@@ -430,6 +429,8 @@ class GameScene(BaseScene):
                 self.player.handle_input(pygame.key.get_pressed(), events)
             except Exception:
                 pass
+            if self._shooting is not None:
+                self._shooting.handle_events(events)
 
     def update(self, dt: float) -> None:
         if self._map_overlay_visible:
@@ -457,7 +458,11 @@ class GameScene(BaseScene):
 
         # Physics
         if self._physics:
-            all_physical = [self.player] + [e for e in self.enemies if e.alive]
+            all_physical = (
+                [self.player]
+                + [e for e in self.enemies if e.alive]
+                + [b for b in self.pvp_bots if b.alive]
+            )
             self._physics.update(all_physical, self.tile_map, dt)
 
         # Enemy animations: sync physics position + advance animation controller.
@@ -471,7 +476,7 @@ class GameScene(BaseScene):
 
         # Projectile movement
         for proj in self.projectiles:
-            proj.update(dt)
+            proj.update(dt, self.tile_map)
         self.projectiles = [p for p in self.projectiles if p.alive]
 
         # Combat — targets include the player so enemy projectiles can hit them.
@@ -655,6 +660,14 @@ class GameScene(BaseScene):
                 except Exception:
                     pass
 
+        # PvP bots (same layer as enemies)
+        for bot in self.pvp_bots:
+            if bot.alive:
+                try:
+                    bot.render(screen, cam_off)
+                except Exception:
+                    pass
+
         # Projectiles
         for proj in self.projectiles:
             try:
@@ -675,12 +688,36 @@ class GameScene(BaseScene):
             except Exception:
                 pass
 
+        # Crosshair — drawn on top of everything at HUD layer level
+        if self._shooting is not None:
+            self._shooting.render_crosshair(screen, cam_off)
+
     # ------------------------------------------------------------------
     # HUD state builder
     # ------------------------------------------------------------------
 
     def _build_hud_state(self):
         from src.ui.hud_state import HUDState, ZoneInfo, WeaponInfo, ConsumableSlot
+
+        # --- WeaponInfo: derive from ShootingSystem + player inventory -------
+        weapon_info = None
+        if self._shooting is not None:
+            inv = getattr(self.player, 'inventory', None)
+            equipped = getattr(inv, 'equipped_weapon', None) if inv is not None else None
+            if equipped is not None:
+                ws = self._shooting.weapon_state
+                reload_prog = (
+                    (1.0 - ws.reload_timer / ws.reload_time)
+                    if ws.reloading and ws.reload_time > 0
+                    else 0.0
+                )
+                weapon_info = WeaponInfo(
+                    name=equipped.name,
+                    ammo_current=ws.ammo,
+                    ammo_reserve=ws.magazine_size,
+                    reloading=ws.reloading,
+                    reload_progress=reload_prog,
+                )
 
         tile_map = getattr(self, 'tile_map', None)
         ext_rect = getattr(tile_map, 'extraction_rect', None) if tile_map else None

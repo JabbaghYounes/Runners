@@ -42,7 +42,12 @@ _SFX_BY_STATUS: dict[str, str] = {
     "eliminated": "extraction_fail",
 }
 
-# How many buttons are shown on this screen
+_STATUS_COLORS: dict[str, tuple] = {
+    "success": (57, 255, 20),      # ACCENT_GREEN
+    "timeout": (255, 165, 0),      # ACCENT_ORANGE
+    "eliminated": (255, 50, 50),   # ACCENT_RED
+}
+
 _NUM_BUTTONS = 3
 _log = logging.getLogger(__name__)
 
@@ -116,8 +121,12 @@ def _safe_font(size: int) -> pygame.font.Font:
 class PostRound:
     """Displays round statistics and lets the player choose what to do next.
 
-    Progression (XP award, currency credit, save) is committed exactly once
+    Progression (XP commit, currency credit, save) is committed exactly once
     inside ``__init__``; subsequent ``update`` calls do not re-apply it.
+
+    XP is applied to the player in real-time during the round via event
+    subscriptions on ``XPSystem``.  ``PostRound`` calls ``xp_system.commit()``
+    to zero ``_pending_xp`` and finalise the round — it does **not** re-award.
     """
 
     def __init__(
@@ -202,7 +211,7 @@ class PostRound:
             summary.level_after = xp_system.level
 
         if save_manager:
-            save_manager.save()
+            save_manager.save(currency=currency, xp_system=xp_system)
 
         # Play outcome SFX (guarded: audio may be None or uninitialised)
         if audio_system is not None and summary is not None:
@@ -290,6 +299,14 @@ class PostRound:
 
     def render(self, surface: pygame.Surface) -> None:
         """Draw the post-round screen onto *surface*."""
+        from src.constants import (
+            BG_DEEP, BG_PANEL, BORDER_DIM,
+            TEXT_PRIMARY, TEXT_SECONDARY, XP_COLOR, ACCENT_GREEN,
+        )
+        from src.ui.widgets import Panel, Label, ProgressBar
+
+        self._ensure_fonts()
+
         if self.blurred_bg:
             surface.blit(self.blurred_bg, (0, 0))
 
@@ -299,9 +316,7 @@ class PostRound:
         if self.summary:
             label = self.summary.extraction_status.upper()
         else:
-            label = "ROUND ENDED"
-        img = font.render(label, True, (255, 255, 255))
-        surface.blit(img, (100, 100))
+            surface.fill(BG_DEEP)
 
         if self.summary:
             y = 148
@@ -349,6 +364,13 @@ class PostRound:
                 y += 22
 
     # Private helpers
+    # ------------------------------------------------------------------
+
+    def _ensure_fonts(self) -> None:
+        if self._font_lg is None:
+            self._font_lg = pygame.font.SysFont('monospace', 26, bold=True)
+            self._font_md = pygame.font.SysFont('monospace', 18)
+            self._font_sm = pygame.font.SysFont('monospace', 13)
 
     def _activate_button(self, index: int) -> None:
         """Route the activated button to the correct scene transition."""

@@ -129,15 +129,18 @@ def _build(summary, blurred_bg, xp_system, currency,
 
 class TestProgressionCommit:
 
-    def test_xp_award_called_once_with_correct_amount(
+    def test_xp_commit_called_once_on_construction(
         self, success_summary, blurred_bg,
         mock_xp_system, mock_currency, mock_save_manager,
         mock_scene_manager, mock_asset_manager, mock_audio_system,
     ):
+        """XP is applied live during the round; PostRound calls commit() to
+        zero pending_xp — it must NOT call award() and re-inflate XP."""
         _build(success_summary, blurred_bg, mock_xp_system, mock_currency,
                mock_save_manager, mock_scene_manager, mock_asset_manager, mock_audio_system)
 
-        mock_xp_system.award.assert_called_once_with(success_summary.xp_earned)
+        mock_xp_system.commit.assert_called_once()
+        mock_xp_system.award.assert_not_called()
 
     def test_currency_add_called_once_with_correct_amount(
         self, success_summary, blurred_bg,
@@ -179,7 +182,7 @@ class TestProgressionCommit:
         scene.update(0.016)
         scene.update(0.016)
 
-        mock_xp_system.award.assert_called_once()
+        mock_xp_system.commit.assert_called_once()
         mock_currency.add.assert_called_once()
         assert mock_save_manager.save.call_count == 1
 

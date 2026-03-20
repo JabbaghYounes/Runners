@@ -52,10 +52,25 @@ class CombatSystem:
                     target.take_damage(effective)
                 proj.alive = False
 
+                # Always notify listeners about the damage event.
+                if self._event_bus is not None:
+                    self._event_bus.emit(
+                        "damage_taken",
+                        victim=target,
+                        attacker=proj.owner,
+                        amount=effective,
+                    )
+
                 if not getattr(target, 'alive', True):
                     if self._event_bus is not None:
+                        # "player_killed" kept for backward-compat with HUD / audio
+                        # subscriptions that pre-date this feature.
                         self._event_bus.emit(
                             "player_killed", killer=proj.owner, victim=target
+                        )
+                        # "entity_killed" is the canonical cross-entity death event.
+                        self._event_bus.emit(
+                            "entity_killed", killer=proj.owner, victim=target
                         )
                 break  # projectile consumed
 
