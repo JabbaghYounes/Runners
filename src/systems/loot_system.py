@@ -224,6 +224,9 @@ class LootSystem:
                         loot.picked_up = True
                         consumed.append(loot)
                         self._event_bus.emit('item_picked_up', player=player, item=loot.item)
+                    else:
+                        # Inventory full — notify so the HUD can show a warning
+                        self._event_bus.emit('inventory_full', player=player)
         for loot in consumed:
             if loot in self._loot_items:
                 self._loot_items.remove(loot)

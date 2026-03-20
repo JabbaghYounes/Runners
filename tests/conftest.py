@@ -40,6 +40,22 @@ def reinitialize_pygame_if_needed():
         pygame.display.set_mode((1, 1))
 
 
+@pytest.fixture(autouse=True)
+def restore_key_bindings():
+    """Snapshot KEY_BINDINGS before each test and restore it afterward.
+
+    Some tests (e.g. TestKeyBindingsSync) call GameApp() with custom settings
+    that mutate the module-level KEY_BINDINGS dict.  Without restoration those
+    mutations bleed into later tests and cause unrelated failures (e.g. the
+    player movement tests expect crouch=K_LCTRL and jump=K_SPACE).
+    """
+    from src import constants as _C
+    snapshot = _C.KEY_BINDINGS.copy()
+    yield
+    _C.KEY_BINDINGS.clear()
+    _C.KEY_BINDINGS.update(snapshot)
+
+
 @pytest.fixture
 def pygame_init():
     """Initialise Pygame with a headless 1x1 display for tests that need it."""
