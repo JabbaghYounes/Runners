@@ -1,7 +1,7 @@
 """Main menu scene -- the first scene shown on launch.
 
-Renders three menu options (Start Game / Settings / Quit) using the neon-retro
-colour palette.  Arrow keys navigate; Enter/Space activates.
+Renders four menu options (Start Game / Home Base / Settings / Exit) using the
+neon-retro colour palette.  Arrow keys navigate; Enter/Space activates.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ class MainMenu(BaseScene):
     3. MainMenu(sm, settings, assets, bus)     -- explicit
     """
 
-    _MENU_ITEMS = ("Start Game", "Settings", "Quit")
+    _MENU_ITEMS = ("Start Game", "Home Base", "Settings", "Exit")
 
     def __init__(
         self,
@@ -124,13 +124,16 @@ class MainMenu(BaseScene):
             1,
         )
 
-        # Menu items
+        # Menu items — vertically centred at any resolution
+        spacing = 58
+        block_h = (len(self._MENU_ITEMS) - 1) * spacing
+        y_start = h // 2 - block_h // 2
         for i, label in enumerate(self._MENU_ITEMS):
             is_active = i == self._selected
             color = C.ACCENT_GREEN if is_active else C.TEXT_PRIMARY
 
             text_surf = self._font_item.render(label, True, color)
-            rect = text_surf.get_rect(center=(w // 2, h // 2 + i * 58))
+            rect = text_surf.get_rect(center=(w // 2, y_start + i * spacing))
 
             if is_active:
                 pad = 12
@@ -145,7 +148,7 @@ class MainMenu(BaseScene):
 
         # Keyboard hint
         hint = self._font_hint.render(
-            "Arrow navigate  Enter select  Esc quit", True, C.TEXT_SECONDARY
+            "↑ ↓ navigate   Enter select   Esc exit", True, C.TEXT_SECONDARY
         )
         screen.blit(hint, hint.get_rect(center=(w // 2, h - 32)))
 
@@ -154,6 +157,22 @@ class MainMenu(BaseScene):
         from src.scenes.game_scene import GameScene
         if self._sm is not None:
             self._sm.replace(GameScene(self._sm, self._settings, self._assets))
+        else:
+            self._bus.emit("scene_request", scene="game")
+
+    def _on_home_base(self) -> None:
+        """Navigate to the Home Base scene."""
+        if self._sm is not None:
+            try:
+                from src.scenes.home_base_scene import HomeBaseScene
+                self._sm.replace(
+                    HomeBaseScene(
+                        self._sm, self._settings, self._assets,
+                        None, None, None, None,
+                    )
+                )
+            except Exception:
+                self._bus.emit("scene_request", scene="home_base")
         else:
             self._bus.emit("scene_request", scene="home_base")
 
@@ -166,10 +185,14 @@ class MainMenu(BaseScene):
             self._bus.emit("scene_request", scene="settings")
 
     def _activate(self, index: int) -> None:
+        if not (0 <= index < len(self._MENU_ITEMS)):
+            return
         label = self._MENU_ITEMS[index]
-        if label == "Quit":
+        if label == "Exit":
             self._quit = True
         elif label == "Start Game":
             self._on_start()
+        elif label == "Home Base":
+            self._on_home_base()
         elif label == "Settings":
             self._on_settings()

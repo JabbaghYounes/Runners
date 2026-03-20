@@ -39,10 +39,10 @@ def _load_font(assets, name, size):
 
 
 class PauseMenu(BaseScene):
-    """Semi-transparent pause overlay with RESUME / SETTINGS / RESTART / EXIT TO MENU."""
+    """Semi-transparent pause overlay with RESUME / RESTART / SETTINGS / EXIT TO MENU."""
 
     _PANEL_W = 260
-    _PANEL_H = 294  # 4 buttons × 52 px row + top padding + bottom margin
+    _PANEL_H = 294
 
     def __init__(
         self,
@@ -103,6 +103,13 @@ class PauseMenu(BaseScene):
             "secondary",
             self._on_restart,
         )
+        self._btn_settings = Button(
+            pygame.Rect(bx, py + 194, bw, bh),
+            "SETTINGS",
+            font_btn,
+            "secondary",
+            self._on_settings,
+        )
         self._btn_exit = Button(
             pygame.Rect(bx, py + 246, bw, bh),
             "EXIT TO MENU",
@@ -157,6 +164,10 @@ class PauseMenu(BaseScene):
     def _on_restart(self) -> None:
         self._confirm_restart.show((SCREEN_W, SCREEN_H))
 
+    def _on_settings(self) -> None:
+        from src.scenes.settings_screen import SettingsScreen
+        self._sm.push(SettingsScreen(self._sm, self._settings, self._assets))
+
     def _on_exit(self) -> None:
         self._confirm_exit.show((SCREEN_W, SCREEN_H))
 
@@ -204,6 +215,7 @@ class PauseMenu(BaseScene):
             self._btn_resume.handle_event(event)
             self._btn_settings.handle_event(event)
             self._btn_restart.handle_event(event)
+            self._btn_settings.handle_event(event)
             self._btn_exit.handle_event(event)
 
     def update(self, dt: float) -> None:
@@ -223,6 +235,7 @@ class PauseMenu(BaseScene):
         self._btn_resume.draw(screen)
         self._btn_settings.draw(screen)
         self._btn_restart.draw(screen)
+        self._btn_settings.draw(screen)
         self._btn_exit.draw(screen)
 
         # Active confirm dialog
