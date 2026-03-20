@@ -26,7 +26,7 @@ class Currency:
         return f"${self.balance:,}"
 
     def load(self, data: dict) -> None:
-        self.balance = data.get('balance', 0)
+        self.balance = max(0, int(data.get('balance', 0)))
 
     def to_save_dict(self) -> dict:
         return {'balance': self.balance}

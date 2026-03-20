@@ -36,6 +36,8 @@ class ExtractionSystem:
                 if self._hold_progress >= self.HOLD_DURATION:
                     self._succeeded = True
                     self._event_bus.emit('extraction_success', player=player)
+                    _loot = list(getattr(player, 'inventory', []) or [])
+                    self._event_bus.emit('player_extracted', loot=_loot)
                     self._hold_progress = 0.0
             else:
                 self._hold_progress = max(0.0, self._hold_progress - dt * 2)

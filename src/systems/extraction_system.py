@@ -130,6 +130,10 @@ class ExtractionSystem:
                         loot=list(player.inventory),
                         time_survived=self._elapsed_seconds_from_outside,
                     )
+                    self._bus.publish(
+                        "player_extracted",
+                        loot=list(player.inventory),
+                    )
 
     # ------------------------------------------------------------------
     # Properties read by UI widgets

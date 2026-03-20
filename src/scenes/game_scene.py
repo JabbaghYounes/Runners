@@ -204,6 +204,17 @@ class GameScene(BaseScene):
         if self._skill_tree is not None:
             self._apply_skill_tree_bonuses(self.player, self._skill_tree)
 
+        # Currency system
+        try:
+            from src.systems.currency_system import CurrencySystem
+            if self._currency is not None:
+                self._currency_system = CurrencySystem(self._currency, self._event_bus)
+                self._currency_system.reset_round()
+            else:
+                self._currency_system = None
+        except Exception:
+            self._currency_system = None
+
         # Subscribe events
         self._event_bus.subscribe('enemy_killed', self._on_enemy_killed)
         self._event_bus.subscribe('extraction_success', self._on_extract)
@@ -231,6 +242,7 @@ class GameScene(BaseScene):
         self._loot_sys = None
         self._buff = None
         self._challenge = None
+        self._currency_system = None
         if not hasattr(self, '_audio_sys'):
             self._audio_sys = None
 
@@ -343,7 +355,9 @@ class GameScene(BaseScene):
         pass
 
     def on_exit(self) -> None:
-        pass
+        cs = getattr(self, '_currency_system', None)
+        if cs is not None:
+            cs.teardown()
 
     def handle_events(self, events: List[pygame.event.Event]) -> None:
         for event in events:
@@ -681,10 +695,11 @@ class GameScene(BaseScene):
                 self._event_bus.emit('level.up', level=self._xp_system.level)
 
     def _on_extract(self, **kwargs: Any) -> None:
-        """Extraction succeeded -- push PostRound."""
+        """Extraction succeeded -- build RoundSummary and push PostRound."""
         try:
             from src.scenes.post_round import PostRound
             from src.save.save_manager import SaveManager
+            from src.core.round_summary import RoundSummary
             save_mgr = SaveManager(_path('saves', 'save.json'))
             loot = []
             if hasattr(self.player, 'inventory'):
@@ -693,49 +708,87 @@ class GameScene(BaseScene):
                     loot = list(inv.get_items())
                 elif isinstance(inv, list):
                     loot = list(inv)
+            money_earned = (
+                self._currency_system.round_earnings
+                if self._currency_system is not None else 0
+            )
+            level = self._xp_system.level if self._xp_system else 1
+            active = (
+                self._challenge.get_active_challenges()
+                if self._challenge else []
+            )
+            summary = RoundSummary(
+                extraction_status="success",
+                extracted_items=loot,
+                xp_earned=0,
+                money_earned=money_earned,
+                kills=0,
+                challenges_completed=sum(1 for c in active if c.completed),
+                challenges_total=len(active),
+                level_before=level,
+            )
             self._sm.replace(PostRound(
-                sm=self._sm, settings=self._settings, assets=self._assets,
-                xp_system=self._xp_system, currency=self._currency,
+                summary=summary,
+                xp_system=self._xp_system,
+                currency=self._currency,
                 save_manager=save_mgr,
-                extracted=True,
-                loot_items=loot,
+                scene_manager=self._sm,
             ))
         except Exception as e:
             print(f"[GameScene] PostRound push failed: {e}")
 
     def _on_extract_failed(self, **kwargs: Any) -> None:
+        """Extraction timed out -- build RoundSummary and push PostRound."""
         try:
             from src.scenes.post_round import PostRound
             from src.save.save_manager import SaveManager
+            from src.core.round_summary import RoundSummary
             save_mgr = SaveManager(_path('saves', 'save.json'))
-            loot = []
-            if hasattr(self.player, 'inventory'):
-                inv = self.player.inventory
-                if hasattr(inv, 'get_items'):
-                    loot = list(inv.get_items())
-                elif isinstance(inv, list):
-                    loot = list(inv)
+            level = self._xp_system.level if self._xp_system else 1
+            summary = RoundSummary(
+                extraction_status="timeout",
+                extracted_items=[],
+                xp_earned=0,
+                money_earned=0,
+                kills=0,
+                challenges_completed=0,
+                challenges_total=0,
+                level_before=level,
+            )
             self._sm.replace(PostRound(
-                sm=self._sm, settings=self._settings, assets=self._assets,
-                xp_system=self._xp_system, currency=self._currency,
+                summary=summary,
+                xp_system=self._xp_system,
+                currency=self._currency,
                 save_manager=save_mgr,
-                extracted=False,
-                loot_items=loot,
+                scene_manager=self._sm,
             ))
         except Exception as e:
             print(f"[GameScene] PostRound push failed: {e}")
 
     def _on_player_dead(self) -> None:
+        """Player eliminated -- build RoundSummary and push PostRound."""
         try:
             from src.scenes.post_round import PostRound
             from src.save.save_manager import SaveManager
+            from src.core.round_summary import RoundSummary
             save_mgr = SaveManager(_path('saves', 'save.json'))
+            level = self._xp_system.level if self._xp_system else 1
+            summary = RoundSummary(
+                extraction_status="eliminated",
+                extracted_items=[],
+                xp_earned=0,
+                money_earned=0,
+                kills=0,
+                challenges_completed=0,
+                challenges_total=0,
+                level_before=level,
+            )
             self._sm.replace(PostRound(
-                sm=self._sm, settings=self._settings, assets=self._assets,
-                xp_system=self._xp_system, currency=self._currency,
+                summary=summary,
+                xp_system=self._xp_system,
+                currency=self._currency,
                 save_manager=save_mgr,
-                extracted=False,
-                loot_items=[],
+                scene_manager=self._sm,
             ))
         except Exception as e:
             print(f"[GameScene] PostRound push failed: {e}")

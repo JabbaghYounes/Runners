@@ -66,7 +66,8 @@ class HomeBase:
     # Upgrade
     # ------------------------------------------------------------------
 
-    def upgrade(self, facility_id: str, currency: "Currency | None" = None) -> bool:
+    def upgrade(self, facility_id: str, currency: "Currency | None" = None,
+                event_bus=None) -> bool:
         cur = currency or self._currency
         if facility_id not in self._levels:
             return False
@@ -86,6 +87,8 @@ class HomeBase:
             return False
 
         self._levels[facility_id] = current + 1
+        if event_bus is not None:
+            event_bus.emit("currency_spent", amount=cost, new_balance=cur.balance)
         return True
 
     def can_upgrade(self, facility_id: str, currency: "Currency | None" = None) -> bool:

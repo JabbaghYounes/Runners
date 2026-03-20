@@ -65,14 +65,14 @@ class PostRound:
         self.asset_manager = asset_manager
         self.audio_system = audio_system
 
-        # Commit progression (once)
+        # Commit progression (once).
         if xp_system and summary:
             xp_system.award(summary.xp_earned)
             summary.level_after = xp_system.level
         if currency and summary:
             currency.add(summary.money_earned)
         if save_manager:
-            save_manager.save()
+            save_manager.save(currency=currency, xp_system=xp_system)
 
         # Play outcome SFX
         if audio_system and summary:

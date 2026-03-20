@@ -107,7 +107,7 @@ class SkillTree:
     # ------------------------------------------------------------------
 
     def unlock(self, node_id: str, currency: Optional[Currency] = None,
-               player_level: Optional[int] = None) -> bool:
+               player_level: Optional[int] = None, event_bus=None) -> bool:
         """Attempt to unlock *node_id*.
 
         If *currency* is provided the cost is deducted automatically.
@@ -122,6 +122,9 @@ class SkillTree:
             if not currency.spend(cost):
                 return False
         self._unlocked.add(node_id)
+        if event_bus is not None:
+            new_balance = currency.balance if currency is not None else 0
+            event_bus.emit("currency_spent", amount=cost, new_balance=new_balance)
         return True
 
     # ------------------------------------------------------------------
