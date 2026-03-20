@@ -218,6 +218,10 @@ class GameScene(BaseScene):
         self._event_bus.subscribe('extraction_failed', self._on_extract_failed)
         self._event_bus.subscribe('round_end', self._on_round_end)
 
+        # Round timer (started in on_enter to align with scene lifecycle)
+        from src.systems.round_timer import RoundTimer
+        self._round_timer = RoundTimer(self._event_bus)
+
         self._full_init = True
 
     def _init_stub(self, zones_override):
@@ -244,6 +248,8 @@ class GameScene(BaseScene):
         self._challenge = None
         if not hasattr(self, '_audio_sys'):
             self._audio_sys = None
+
+        self._round_timer = None
 
         # Apply home base bonuses in stub mode too
         if self._home_base is not None:
@@ -505,6 +511,10 @@ class GameScene(BaseScene):
                 self._hud.update(self._build_hud_state(), dt)
             except Exception:
                 pass
+
+        # Round timer
+        if self._round_timer:
+            self._round_timer.update(dt)
 
         # Audio forwarding
         if self._audio is not None:
@@ -817,6 +827,9 @@ class GameScene(BaseScene):
     def _push_pause(self) -> None:
         try:
             from src.scenes.pause_menu import PauseMenu
+            # Guard against rapid double-ESC stacking two PauseMenus
+            if isinstance(self._sm.active, PauseMenu):
+                return
             self._sm.push(PauseMenu(self._sm, self._settings, self._assets))
         except Exception as e:
             print(f"[GameScene] PauseMenu push failed: {e}")
