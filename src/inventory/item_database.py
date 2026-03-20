@@ -77,6 +77,39 @@ class ItemDatabase:
 
         self._loaded = True
 
+    def load_additional(self, path: "Path | str") -> None:
+        """Merge entries from *path* into the existing catalog without clearing it.
+
+        If the file does not exist or cannot be parsed, the method silently
+        returns so that missing optional data files never crash the game.
+        """
+        try:
+            items_path = Path(path)
+            with items_path.open("r", encoding="utf-8") as fh:
+                raw = json.load(fh)
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            return  # silently ignore missing/corrupt files
+
+        if isinstance(raw, list):
+            entries = raw
+        elif isinstance(raw, dict) and "items" in raw:
+            entries = raw["items"]
+        elif isinstance(raw, dict):
+            entries = []
+            for key, val in raw.items():
+                if isinstance(val, dict):
+                    val = dict(val)
+                    if "id" not in val:
+                        val["id"] = key
+                    entries.append(val)
+        else:
+            entries = []
+
+        for entry in entries:
+            item = self._parse_entry(entry)
+            self._items[item.item_id] = item
+            self._raw[item.item_id] = entry
+
     def _parse_entry(self, entry: dict[str, Any]) -> Item:
         # Collect known extra kwargs, filtering out None values
         extra: dict[str, Any] = {}
