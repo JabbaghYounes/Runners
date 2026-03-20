@@ -204,10 +204,19 @@ class GameScene(BaseScene):
         if self._skill_tree is not None:
             self._apply_skill_tree_bonuses(self.player, self._skill_tree)
 
+        # Round timer
+        from src.systems.round_timer import RoundTimer
+        self._round_timer = RoundTimer(self._event_bus)
+
+        # Transition guard — prevents double scene-replace when multiple
+        # "end-of-round" events arrive in the same frame.
+        self._transitioning: bool = False
+
         # Subscribe events
         self._event_bus.subscribe('enemy_killed', self._on_enemy_killed)
         self._event_bus.subscribe('extraction_success', self._on_extract)
         self._event_bus.subscribe('extraction_failed', self._on_extract_failed)
+        self._event_bus.subscribe('round_end', self._on_round_end)
 
         self._full_init = True
 
@@ -223,6 +232,8 @@ class GameScene(BaseScene):
         self.projectiles = []
         self._zones = zones_override if zones_override is not None else self._default_zones()
         self._extraction = None
+        self._round_timer = None
+        self._transitioning: bool = False
         self._hud = None
         self._map_overlay = None
         self._physics = None
@@ -340,10 +351,14 @@ class GameScene(BaseScene):
     # ------------------------------------------------------------------
 
     def on_enter(self) -> None:
-        pass
+        if self._round_timer:
+            self._round_timer.reset()
+            self._round_timer.start()
 
     def on_exit(self) -> None:
-        pass
+        if self._round_timer:
+            self._round_timer.reset()
+        self._transitioning = False
 
     def handle_events(self, events: List[pygame.event.Event]) -> None:
         for event in events:
@@ -378,6 +393,10 @@ class GameScene(BaseScene):
             self._e_held = bool(keys[pygame.K_e])
         except Exception:
             self._e_held = False
+
+        # Round timer
+        if self._round_timer:
+            self._round_timer.update(dt)
 
         # Physics
         if self._physics:
@@ -533,8 +552,7 @@ class GameScene(BaseScene):
                     extraction_rect=self.tile_map.extraction_rect,
                     enemies=self.enemies,
                     seconds_remaining=(
-                        self._extraction.seconds_remaining
-                        if self._extraction else 0
+                        self._round_timer.seconds_remaining if self._round_timer else 0
                     ),
                     map_rect=self.tile_map.map_rect,
                 )
@@ -639,9 +657,7 @@ class GameScene(BaseScene):
             xp=xp_sys.xp if xp_sys else 0,
             xp_to_next=xp_sys.xp_to_next_level() if xp_sys else 100,
             seconds_remaining=(
-                self._extraction.seconds_remaining
-                if self._extraction and hasattr(self._extraction, 'seconds_remaining')
-                else 0
+                self._round_timer.seconds_remaining if self._round_timer else 0
             ),
             player_world_pos=self.player.center,
             map_world_rect=map_rect,
@@ -682,6 +698,9 @@ class GameScene(BaseScene):
 
     def _on_extract(self, **kwargs: Any) -> None:
         """Extraction succeeded -- push PostRound."""
+        if self._transitioning:
+            return
+        self._transitioning = True
         try:
             from src.scenes.post_round import PostRound
             from src.save.save_manager import SaveManager
@@ -704,6 +723,9 @@ class GameScene(BaseScene):
             print(f"[GameScene] PostRound push failed: {e}")
 
     def _on_extract_failed(self, **kwargs: Any) -> None:
+        if self._transitioning:
+            return
+        self._transitioning = True
         try:
             from src.scenes.post_round import PostRound
             from src.save.save_manager import SaveManager
@@ -726,6 +748,9 @@ class GameScene(BaseScene):
             print(f"[GameScene] PostRound push failed: {e}")
 
     def _on_player_dead(self) -> None:
+        if self._transitioning:
+            return
+        self._transitioning = True
         try:
             from src.scenes.post_round import PostRound
             from src.save.save_manager import SaveManager
@@ -739,6 +764,10 @@ class GameScene(BaseScene):
             ))
         except Exception as e:
             print(f"[GameScene] PostRound push failed: {e}")
+
+    def _on_round_end(self, **kwargs: Any) -> None:
+        """Round timer expired -- force extraction failure for all players."""
+        self._on_extract_failed(**kwargs)
 
     def _push_pause(self) -> None:
         try:
