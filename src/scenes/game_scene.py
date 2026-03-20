@@ -599,7 +599,13 @@ class GameScene(BaseScene):
         # Build zones list from tile_map zones if available, else from _zones
         if tile_map and hasattr(tile_map, 'zones'):
             zone_infos = [
-                ZoneInfo(name=z.name, world_rect=pygame.Rect(z.rect))
+                ZoneInfo(
+                    name=z.name,
+                    color=tuple(getattr(z, 'color', (60, 120, 180))),
+                    # pygame.Rect(z.rect) works whether z.rect is already a Rect
+                    # or a (x, y, w, h) tuple — confirming intent here.
+                    world_rect=pygame.Rect(z.rect),
+                )
                 for z in tile_map.zones
             ]
         else:
@@ -631,6 +637,7 @@ class GameScene(BaseScene):
             map_rect = pygame.Rect(0, 0, 1280, 720)
 
         return HUDState(
+            tile_surf=getattr(getattr(self, 'tile_map', None), 'baked_minimap', None),
             hp=float(self.player.health),
             max_hp=float(self.player.max_health),
             armor=float(getattr(self.player, 'armor', 0)),
