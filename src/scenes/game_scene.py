@@ -146,6 +146,7 @@ class GameScene(BaseScene):
         except Exception:
             self._loot_sys = None
         self._buff = BuffSystem()
+        self.player.set_buff_system(self._buff)
 
         # Challenge system
         try:
