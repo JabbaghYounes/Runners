@@ -7,7 +7,6 @@ from typing import List, Tuple, Optional
 import pygame
 
 from src.map.zone import Zone
-from src.constants import TILE_SIZE, BG_MID, BORDER_DIM, ACCENT_GREEN, BORDER_BRIGHT
 
 TILE_AIR = 0
 TILE_SOLID = 1
@@ -22,6 +21,8 @@ class TileMap:
         self.height: int = 0
         self.zones: List[Zone] = []
         self.extraction_rect: Optional[pygame.Rect] = None
+        # player_spawns is the canonical list; player_spawn is kept for backward compat.
+        self.player_spawns: List[Tuple[float, float]] = [(96.0, 832.0)]
         self.player_spawn: Tuple[float, float] = (96.0, 832.0)
         self.loot_spawns: List[Tuple[float, float]] = []
         self._tick: float = 0.0
@@ -37,8 +38,20 @@ class TileMap:
         tm.tiles = data['tiles']
         tm.height = len(tm.tiles)
         tm.width = len(tm.tiles[0]) if tm.height > 0 else 0
-        spawn = data.get('player_spawn', [96, 832])
-        tm.player_spawn = (float(spawn[0]), float(spawn[1]))
+
+        # player_spawns (new multi-point format) with backward-compat shim for
+        # the legacy singular "player_spawn" key.
+        if 'player_spawns' in data:
+            raw = data['player_spawns']
+            tm.player_spawns = [(float(p[0]), float(p[1])) for p in raw]
+        elif 'player_spawn' in data:
+            spawn = data['player_spawn']
+            tm.player_spawns = [(float(spawn[0]), float(spawn[1]))]
+        else:
+            tm.player_spawns = [(96.0, 832.0)]
+        # Keep the legacy scalar attribute pointing at the first spawn point.
+        tm.player_spawn = tm.player_spawns[0] if tm.player_spawns else (96.0, 832.0)
+
         er = data.get('extraction_rect', [0, 0, 32, 32])
         tm.extraction_rect = pygame.Rect(er[0], er[1], er[2], er[3])
         tm.loot_spawns = [

@@ -103,11 +103,6 @@ class GameScene(BaseScene):
         w, h = self._settings.resolution_tuple
         self.camera: Camera = Camera(w, h, mr.w, mr.h)
 
-        # Player
-        sx, sy = self.tile_map.player_spawn
-        self.player: Player = Player(sx, sy)
-        self._player = self.player
-
         # Databases
         self._item_db = ItemDatabase.instance()
         if not self._item_db.item_ids:
@@ -120,10 +115,10 @@ class GameScene(BaseScene):
         if os.path.exists(enemies_path):
             self._enemy_db.load(enemies_path)
 
-        # Enemies
-        spawn_sys = SpawnSystem()
-        self.enemies: List[Any] = spawn_sys.spawn_all_zones(
-            self.tile_map.zones, self._enemy_db
+        # Spawn all entities via SpawnSystem (loot → enemies → bots → player)
+        self._spawn_sys = SpawnSystem(event_bus=self._event_bus)
+        _result = self._spawn_sys.spawn_round(
+            self.tile_map, self._enemy_db, self._item_db
         )
 
         # Loot
@@ -257,6 +252,7 @@ class GameScene(BaseScene):
         self._player = self.player
         self.player.alive = True
         self.enemies = []
+        self.pvp_bots = []
         self.loot_items = []
         self.projectiles = []
         self._zones = zones_override if zones_override is not None else self._default_zones()
@@ -461,7 +457,11 @@ class GameScene(BaseScene):
 
         # Physics
         if self._physics:
-            all_physical = [self.player] + [e for e in self.enemies if e.alive]
+            all_physical = (
+                [self.player]
+                + [e for e in self.enemies if e.alive]
+                + [b for b in self.pvp_bots if b.alive]
+            )
             self._physics.update(all_physical, self.tile_map, dt)
 
         # Enemy animations: sync physics position + advance animation controller.
@@ -656,6 +656,14 @@ class GameScene(BaseScene):
             if enemy.alive:
                 try:
                     enemy.render(screen, cam_off)
+                except Exception:
+                    pass
+
+        # PvP bots (same layer as enemies)
+        for bot in self.pvp_bots:
+            if bot.alive:
+                try:
+                    bot.render(screen, cam_off)
                 except Exception:
                     pass
 

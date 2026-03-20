@@ -32,6 +32,8 @@ class Zone:
             self.spawn_points = []
         if self.enemy_spawns is None:
             self.enemy_spawns = []
+        if self.pvp_bot_spawns is None:
+            self.pvp_bot_spawns = []
 
     def contains(self, pos: Tuple[float, float]) -> bool:
         """Return True if *pos* falls within the zone's bounding rectangle."""
